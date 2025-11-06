@@ -1,14 +1,17 @@
-#!/usr/bin/env bash
-# backend/wait-for-db.sh
+#!/usr/bin/env sh
 set -e
-
-host="$1"
-port="${2:-5432}"
-
-echo "Waiting for database $host:$port..."
-until nc -z "$host" "$port"; do
-  sleep 1
-done
-
-echo "Database is up!"
-exec "${@:3}"
+HOST="$1"; PORT="${2:-5432}"
+echo "Waiting for $HOST:$PORT ..."
+python3 - <<'PY' "$HOST" "$PORT"
+import socket, sys, time
+host, port = sys.argv[1], int(sys.argv[2])
+while True:
+    try:
+        with socket.create_connection((host, port), timeout=1):
+            break
+    except OSError:
+        time.sleep(0.5)
+print("DB is up")
+PY
+echo "Database is up. Continuing..."
+exit 0

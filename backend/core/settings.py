@@ -25,7 +25,11 @@ SECRET_KEY = 'django-insecure-kflkrqn57mhd^n&qy74z7+ctkqik2-*+7t5&g$rl6s9r4@g4+g
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = os.getenv("DJANGO_ALLOWED_HOSTS", "*").split(",")
+# أو مؤقتًا للتطوير فقط:
+# ALLOWED_HOSTS = ["*"]
+
+
 
 
 # Application definition
@@ -37,12 +41,21 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    
-    #project app
+
+    # (API)
+    'rest_framework',
+    'django_filters',
+
+    # project apps
     'users',
     'warehouses',
     'requests',
+    'books',
+    'schools',
+    'school_requests',
+    'notifications',
 ]
+
 
 AUTH_USER_MODEL = 'users.User'
 
@@ -81,15 +94,18 @@ WSGI_APPLICATION = 'core.wsgi.application'
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('POSTGRES_DB', 'pgsql'),
-        'USER': os.getenv('POSTGRES_USER', 'pgsql'),
-        'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'pgsql'),
-        'HOST': os.getenv('POSTGRES_HOST'),
-        'PORT': os.getenv('POSTGRES_PORT'),
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.getenv("POSTGRES_DB", "pgsql"),
+        "USER": os.getenv("POSTGRES_USER", "pgsql"),
+        "PASSWORD": os.getenv("POSTGRES_PASSWORD", "pgsql"),
+        "HOST": os.getenv("POSTGRES_HOST", "db"),   # اسم خدمة postgres في docker-compose
+        "PORT": os.getenv("POSTGRES_PORT", "5432"),
+        "CONN_MAX_AGE": 60,   
+        # "ATOMIC_REQUESTS": True,  
     }
 }
+
 
 
 # Password validation
@@ -127,6 +143,22 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
 
 STATIC_URL = 'static/'
+
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.SessionAuthentication",
+        # لاحقًا نضيف JWT هنا إذا احتجناه
+    ],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.AllowAny",  # مؤقتًا فقط
+    ],
+    "DEFAULT_FILTER_BACKENDS": [
+        "django_filters.rest_framework.DjangoFilterBackend",
+        "rest_framework.filters.SearchFilter",
+        "rest_framework.filters.OrderingFilter",
+    ],
+}
+
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field

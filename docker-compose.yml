@@ -36,10 +36,8 @@ services:
   backend:
     build: ./backend
     container_name: ketabi_backend
-    command: >
-      sh -lc "./wait-for-db.sh db 5432 &&
-              python manage.py migrate --noinput &&
-              python manage.py runserver 0.0.0.0:8000"
+    # في service backend، غير command إلى:
+    command: ["tail", "-f", "/dev/null"]
     env_file: .env
     environment:
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-*}

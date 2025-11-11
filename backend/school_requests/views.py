@@ -1,83 +1,158 @@
-from rest_framework import viewsets, filters, status
+# school_requests/views.py
+from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from django_filters.rest_framework import DjangoFilterBackend
-from .models import SchoolRequest
+from rest_framework.permissions import IsAuthenticated
+from django.db import transaction
+from .models import SchoolRequest, SchoolRequestItem
 from .serializers import SchoolRequestSerializer
 
-
 class SchoolRequestViewSet(viewsets.ModelViewSet):
-    queryset = (
-        SchoolRequest.objects
-        .select_related("school", "created_by", "reviewed_by")
-        .prefetch_related("items")
-        .order_by("-id")
-    )
+    queryset = SchoolRequest.objects.all()
     serializer_class = SchoolRequestSerializer
-
-    # تصفية/بحث/ترتيب
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ["status", "school", "created_by", "reviewed_by"]
-    search_fields = ["reason_rejected"]
-    ordering_fields = ["id", "created_at", "updated_at"]
-
-    # ——— إجراءات عملية بسيطة ———
-
-    @action(detail=True, methods=["post"])
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        user = self.request.user
+        
+        # فلترة حسب صلاحيات المستخدم
+        if user.role in ['province_staff', 'province_warehouse']:
+            # موظف المحافظة يرى طلبات مدارس محافظته فقط
+            queryset = queryset.filter(school__province=user.province)
+        elif user.role.startswith('school'):
+            # موظف المدرسة يرى طلبات مدرسته فقط
+            # هنا تحتاج إضافة حقل school للمستخدم إذا كان موظف مدرسة
+            pass
+            
+        # فلترة حسب المدرسة
+        school_id = self.request.query_params.get('school_id')
+        if school_id:
+            queryset = queryset.filter(school_id=school_id)
+            
+        # فلترة حسب الحالة
+        status_filter = self.request.query_params.get('status')
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+            
+        return queryset
+    
+    def perform_create(self, serializer):
+        # تعيين المستخدم الحالي كمنشئ الطلب
+        serializer.save(created_by=self.request.user)
+    
+    @action(detail=True, methods=['post'])
     def submit(self, request, pk=None):
-        """تحويل الطلب من draft إلى submitted"""
-        obj = self.get_object()
-        if obj.status != "draft":
-            return Response({"detail": "لا يمكن الإرسال إلا من حالة draft."}, status=400)
-        obj.status = "submitted"
-        obj.save(update_fields=["status"])
-        return Response({"detail": "تم إرسال الطلب للمحافظة.", "status": obj.status})
-
-    @action(detail=True, methods=["post"])
+        """إرسال الطلب للمحافظة"""
+        school_request = self.get_object()
+        if school_request.status != 'draft':
+            return Response({
+                'success': False,
+                'message': 'لا يمكن إرسال طلب غير مسودة'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        school_request.status = 'submitted'
+        school_request.save()
+        
+        return Response({
+            'success': True,
+            'message': 'تم إرسال الطلب للمحافظة بنجاح'
+        })
+    
+    @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
-        """اعتماد المحافظة"""
-        obj = self.get_object()
-        if obj.status not in ["submitted", "rejected"]:
-            return Response({"detail": "يمكن الاعتماد بعد الإرسال فقط."}, status=400)
-        obj.status = "approved"
-        if request.user and request.user.is_authenticated:
-            obj.reviewed_by = request.user
-        obj.reason_rejected = None
-        obj.save(update_fields=["status", "reviewed_by", "reason_rejected"])
-        return Response({"detail": "تم الاعتماد.", "status": obj.status})
-
-    @action(detail=True, methods=["post"])
+        """موافقة المحافظة على الطلب"""
+        school_request = self.get_object()
+        
+        # التحقق من الصلاحية
+        if not request.user.role in ['province_staff', 'province_warehouse']:
+            return Response({
+                'success': False,
+                'message': 'غير مصرح لك بهذا الإجراء'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        if school_request.status != 'submitted':
+            return Response({
+                'success': False,
+                'message': 'لا يمكن الموافقة على طلب غير مرسل'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        school_request.status = 'approved'
+        school_request.reviewed_by = request.user
+        school_request.save()
+        
+        return Response({
+            'success': True,
+            'message': 'تم اعتماد الطلب بنجاح'
+        })
+    
+    @action(detail=True, methods=['post'])
     def reject(self, request, pk=None):
-        """رفض المحافظة مع سبب"""
-        obj = self.get_object()
-        reason = request.data.get("reason_rejected")
+        """رفض الطلب من قبل المحافظة"""
+        school_request = self.get_object()
+        reason = request.data.get('reason', '')
+        
+        # التحقق من الصلاحية
+        if not request.user.role in ['province_staff', 'province_warehouse']:
+            return Response({
+                'success': False,
+                'message': 'غير مصرح لك بهذا الإجراء'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        if school_request.status != 'submitted':
+            return Response({
+                'success': False,
+                'message': 'لا يمكن رفض طلب غير مرسل'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
         if not reason:
-            return Response({"detail": "الرجاء إدخال سبب الرفض (reason_rejected)."}, status=400)
-        if obj.status not in ["submitted", "approved"]:
-            return Response({"detail": "يمكن الرفض بعد الإرسال/قبل التوريد."}, status=400)
-        obj.status = "rejected"
-        obj.reason_rejected = reason
-        if request.user and request.user.is_authenticated:
-            obj.reviewed_by = request.user
-        obj.save(update_fields=["status", "reason_rejected", "reviewed_by"])
-        return Response({"detail": "تم الرفض.", "status": obj.status})
-
-    @action(detail=True, methods=["post"])
+            return Response({
+                'success': False,
+                'message': 'يرجى إدخال سبب الرفض'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        school_request.status = 'rejected'
+        school_request.reason_rejected = reason
+        school_request.reviewed_by = request.user
+        school_request.save()
+        
+        return Response({
+            'success': True,
+            'message': 'تم رفض الطلب'
+        })
+    
+    @action(detail=True, methods=['post'])
     def cancel(self, request, pk=None):
-        """إلغاء المدرسة"""
-        obj = self.get_object()
-        if obj.status not in ["draft", "submitted", "rejected"]:
-            return Response({"detail": "لا يمكن الإلغاء بعد الاعتماد/التوريد."}, status=400)
-        obj.status = "cancelled"
-        obj.save(update_fields=["status"])
-        return Response({"detail": "تم إلغاء الطلب.", "status": obj.status})
-
-    @action(detail=True, methods=["post"])
-    def fulfill(self, request, pk=None):
-        """تمّ توريد الكتب للمدرسة (غالبًا يُضبط تلقائيًا بعد التسليم)"""
-        obj = self.get_object()
-        if obj.status != "approved":
-            return Response({"detail": "التحويل إلى fulfilled يكون بعد الاعتماد."}, status=400)
-        obj.status = "fulfilled"
-        obj.save(update_fields=["status"])
-        return Response({"detail": "تمّ التوريد.", "status": obj.status})
+        """إلغاء الطلب من قبل المدرسة"""
+        school_request = self.get_object()
+        
+        if school_request.status not in ['draft', 'submitted']:
+            return Response({
+                'success': False,
+                'message': 'لا يمكن إلغاء الطلب في حالته الحالية'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        school_request.status = 'cancelled'
+        school_request.save()
+        
+        return Response({
+            'success': True,
+            'message': 'تم إلغاء الطلب بنجاح'
+        })
+    
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        """إحصائيات طلبات المدارس"""
+        user = request.user
+        queryset = self.get_queryset()
+        
+        stats = {
+            'total': queryset.count(),
+            'draft': queryset.filter(status='draft').count(),
+            'submitted': queryset.filter(status='submitted').count(),
+            'approved': queryset.filter(status='approved').count(),
+            'rejected': queryset.filter(status='rejected').count(),
+            'cancelled': queryset.filter(status='cancelled').count(),
+        }
+        
+        return Response(stats)

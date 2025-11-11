@@ -1,3 +1,5 @@
+# users/models.py
+from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 from django.db import models
 
@@ -22,9 +24,12 @@ ROLE_CHOICES = [
     ('admin', 'Admin'),
     ('ministry_staff', 'موظف الوزارة'),
     ('ministry_warehouse', 'موظف مخازن الوزارة'),
+    ('ministry_driver', 'مندوب توصيل الوزارة'),
     ('province_staff', 'موظف المحافظة'),
     ('province_warehouse', 'موظف مخازن المحافظة'),
+    ('province_driver', 'مندوب توصيل المحافظة'),
 ]
+
 
 # موديل المستخدم
 class User(AbstractBaseUser, PermissionsMixin):
@@ -32,8 +37,30 @@ class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(blank=True, null=True)
     full_name = models.CharField(max_length=255)
     role = models.CharField(max_length=30, choices=ROLE_CHOICES)
+    
+    # إضافة المحافظة للموظفين والمندوبين
+    province = models.CharField(max_length=100, blank=True, null=True, verbose_name="المحافظة")
+    
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
+
+    # أضف related_name فريد لتجنب التعارض مع نموذج المستخدم الافتراضي
+    groups = models.ManyToManyField(
+        'auth.Group',
+        verbose_name='groups',
+        blank=True,
+        help_text='The groups this user belongs to.',
+        related_name='custom_user_groups',  # غير هذا
+        related_query_name='custom_user',
+    )
+    user_permissions = models.ManyToManyField(
+        'auth.Permission',
+        verbose_name='user permissions',
+        blank=True,
+        help_text='Specific permissions for this user.',
+        related_name='custom_user_permissions',  # وغير هذا
+        related_query_name='custom_user',
+    )
 
     objects = UserManager()
 
@@ -41,4 +68,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     REQUIRED_FIELDS = ['full_name']
 
     def __str__(self):
-        return self.username
+        return f"{self.full_name} - {self.get_role_display()}"
+
+    def is_driver(self):
+        return self.role in ['ministry_driver', 'province_driver']

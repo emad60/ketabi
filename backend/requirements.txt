@@ -5,3 +5,8 @@ psycopg2-binary==2.9.9
 django-cors-headers==4.4.0
 celery==5.4.0
 redis==5.0.1
+qrcode[pil]==7.4.2
+Pillow==10.4.0
+reportlab==4.2.5   # PDF 
+djangorestframework-simplejwt==5.3.1
+

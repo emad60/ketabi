@@ -1,31 +1,28 @@
-from django.shortcuts import render
-
-# Create your views here.
+# notifications/views.py
 from rest_framework import viewsets
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
 from rest_framework.decorators import action
-
+from rest_framework.response import Response
 from .models import Notification
 from .serializers import NotificationSerializer
 
 class NotificationViewSet(viewsets.ModelViewSet):
     serializer_class = NotificationSerializer
-    permission_classes = [IsAuthenticated]
-
+    
     def get_queryset(self):
+        # كل مستخدم يرى إشعاراته فقط
         return Notification.objects.filter(user=self.request.user)
-
-    # عمل "تعليم كمقروء"
-    @action(detail=True, methods=["post"])
-    def mark_read(self, request, pk=None):
-        notif = self.get_object()
-        notif.read = True
-        notif.save()
-        return Response({"status": "marked as read"})
-
-    # تعليم جميع الإشعارات مقروءة دفعة واحدة
-    @action(detail=False, methods=["post"])
+    
+    @action(detail=False, methods=['post'])
     def mark_all_read(self, request):
-        Notification.objects.filter(user=request.user, read=False).update(read=True)
-        return Response({"status": "all marked as read"})
+        """تحديد جميع الإشعارات كمقروءة"""
+        notifications = self.get_queryset().filter(read=False)
+        notifications.update(read=True)
+        return Response({'success': True, 'message': 'تم تحديد جميع الإشعارات كمقروءة'})
+    
+    @action(detail=True, methods=['post'])
+    def mark_read(self, request, pk=None):
+        """تحديد إشعار معين كمقروء"""
+        notification = self.get_object()
+        notification.read = True
+        notification.save()
+        return Response({'success': True, 'message': 'تم تحديد الإشعار كمقروء'})

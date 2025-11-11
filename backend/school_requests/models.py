@@ -1,9 +1,9 @@
+# school_requests/models.py
 from django.db import models
 from django.conf import settings
 from django.core.validators import MinValueValidator
 from schools.models import School
 from books.models import Book
-
 
 class SchoolRequest(models.Model):
     """طلب صادر من مدرسة إلى المحافظة"""
@@ -29,22 +29,30 @@ class SchoolRequest(models.Model):
         default='draft'
     )
 
-    # من أنشأ الطلب؟ (موظف مدرسة) — نجعله قابلًا لـNULL لتفادي مشاكل بيانات قديمة
+    # من أنشأ الطلب؟ (موظف مدرسة)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True, blank=True,
         related_name='school_requests_created',
-        limit_choices_to={'role': 'school_user'}
     )
 
-    # من راجع/اعتمد؟ (موظف المحافظة) — اختياري
+    # من راجع/اعتمد؟ (موظف المحافظة)
     reviewed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True, blank=True,
         related_name='school_requests_reviewed',
-        limit_choices_to={'role': 'province_staff'}
+        limit_choices_to={'role__in': ['province_staff', 'province_warehouse']}
+    )
+
+    # المندوب المسؤول عن التوصيل
+    assigned_driver = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='school_deliveries',
+        limit_choices_to={'role__in': ['province_driver']}
     )
 
     reason_rejected = models.TextField(null=True, blank=True)

@@ -3,7 +3,6 @@ from django.conf import settings
 from django.db import models
 from users.models import User
 from books.models import Book
-from schools.models import Province
 
 # مستودعات الوزارة
 class MinistryWarehouse(models.Model):

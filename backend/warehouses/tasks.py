@@ -1,46 +1,112 @@
 from celery import shared_task
 from django.db import transaction
-from django.utils import timezone
-from .models import Shipment
-from books.models import Book
+from django.core.mail import send_mail
+from django.conf import settings
+from .models import Shipment, WarehouseStock, StockMovement
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=5)
-def deduct_stock_after_confirmation(self, shipment_id: int):
+@shared_task
+def deduct_stock_after_confirmation(shipment_id: int):
     try:
-        with transaction.atomic():
-            shipment = Shipment.objects.select_for_update().get(id=shipment_id)
-
-            # ما نكرر الخصم لو الشحنة ليست confirmed
-            if shipment.status != "confirmed":
-                return f"Skip: shipment#{shipment.id} status={shipment.status}"
-
-            # نتوقع شكل البيانات: [{"book_id": 1, "quantity": 40}, ...]
-            items = shipment.books or []
-            if not isinstance(items, list):
-                raise ValueError("Shipment.books must be a list of {book_id, quantity}")
-
-            for item in items:
-                book_id = item.get("book_id")
-                qty = int(item.get("quantity", 0))
-                if not book_id or qty <= 0:
-                    continue
-
-                book = Book.objects.select_for_update().get(id=book_id)
-                if book.total_quantity < qty:
-                    # ممكن تختاري raise لرفض الخصم، أو نخصم للمتاح فقط—هنا نمنع السالب:
-                    raise ValueError(f"Insufficient stock for book#{book_id}")
-
-                book.total_quantity -= qty
-                book.save(update_fields=["total_quantity"])
-
-            # علامة وقت تأكيد (اختياري إن تبغي تخزّنيها)
-            shipment.updated_at = timezone.now()
-            shipment.save(update_fields=["updated_at"])
-
-            return f"OK: deducted for shipment#{shipment.id}"
-
+        shipment = Shipment.objects.select_related('from_ministry', 'to_province').get(id=shipment_id)
     except Shipment.DoesNotExist:
-        return f"NotFound: shipment#{shipment_id}"
-    except Exception as exc:
-        # إعادة المحاولة لو في مشاكل لحظية
-        raise self.retry(exc=exc)
+        return f"Shipment {shipment_id} not found"
+
+    if shipment.status != 'confirmed':
+        return f"Shipment {shipment_id} not confirmed"
+
+    with transaction.atomic():
+        for item in shipment.books:
+            book_id = item['book_id']
+            qty = int(item['quantity'])
+            term = item['term']
+            
+            if shipment.courier_role == 'ministry_courier':
+                stock = WarehouseStock.objects.select_for_update().get(
+                    ministry_warehouse=shipment.from_ministry,
+                    book_id=book_id,
+                    term=term
+                )
+            else:
+                stock = WarehouseStock.objects.select_for_update().get(
+                    province_warehouse=shipment.to_province,
+                    book_id=book_id,
+                    term=term
+                )
+            
+            previous_qty = stock.quantity
+            new_qty = max(0, previous_qty - qty)
+            
+            StockMovement.objects.create(
+                stock=stock,
+                movement_type='out',
+                quantity=-qty,
+                previous_quantity=previous_qty,
+                new_quantity=new_qty,
+                shipment=shipment,
+                reason=f"شحنة مؤكدة #{shipment_id}"
+            )
+            
+            stock.quantity = new_qty
+            stock.save()
+    
+    return "تم خصم المخزون بنجاح"
+
+@shared_task
+def send_shipment_notification(shipment_id: int, notification_type: str):
+    try:
+        shipment = Shipment.objects.get(id=shipment_id)
+    except Shipment.DoesNotExist:
+        return
+    
+    if shipment.assigned_courier and shipment.assigned_courier.email:
+        subject = f"تحديث حالة الشحنة #{shipment_id}"
+        message = f"""
+        عزيزي/عزيزتي {shipment.assigned_courier.get_full_name()},
+        
+        تم تحديث حالة الشحنة #{shipment_id} إلى: {shipment.get_status_display()}
+        
+        نوع الشحنة: {shipment.get_courier_role_display()}
+        التاريخ: {shipment.updated_at}
+        
+        شكرًا لجهودكم،
+        فريق النظام
+        """
+        
+        send_mail(
+            subject,
+            message,
+            settings.DEFAULT_FROM_EMAIL,
+            [shipment.assigned_courier.email],
+            fail_silently=True,
+        )
+
+@shared_task
+def check_low_stock(stock_id: int):
+    try:
+        stock = WarehouseStock.objects.get(id=stock_id)
+    except WarehouseStock.DoesNotExist:
+        return
+    
+    if stock.is_low_stock():
+        warehouse = stock.ministry_warehouse if stock.ministry_warehouse else stock.province_warehouse
+        subject = f"تنبيه: مخزون منخفض - {warehouse.name}"
+        message = f"""
+        تنبيه مخزون منخفض:
+        
+        المستودع: {warehouse.name}
+        الكتاب: {stock.book.title}
+        الترم: {stock.get_term_display()}
+        الكمية الحالية: {stock.quantity}
+        الحد الأدنى: {stock.min_threshold}
+        
+        يرجى اتخاذ الإجراء اللازم.
+        """
+        
+        admin_emails = [admin[1] for admin in settings.ADMINS]
+        send_mail(
+            subject,
+            message,
+            settings.DEFAULT_FROM_EMAIL,
+            admin_emails,
+            fail_silently=True,
+        )

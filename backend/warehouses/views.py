@@ -1,231 +1,125 @@
 # warehouses/views.py
-from rest_framework import viewsets, status
-from rest_framework.decorators import action, api_view
+from rest_framework import viewsets
+from rest_framework.decorators import action
 from rest_framework.response import Response
-from django.db import transaction
-from django.utils import timezone
-from rest_framework.permissions import IsAuthenticated
-from .models import MinistryWarehouse, ProvinceWarehouse, WarehouseInventory, Shipment
-from .serializers import (
-    MinistryWarehouseSerializer, 
-    ProvinceWarehouseSerializer,
-    WarehouseInventorySerializer,
-    ShipmentSerializer
-)
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.filters import SearchFilter, OrderingFilter
+from django.db import models
 
-# ViewSet لمستودعات الوزارة
+from .models import (
+    MinistryWarehouse,
+    ProvinceWarehouse,
+    Shipment,
+    WarehouseStock,
+)
+from .serializers import (
+    MinistryWarehouseSerializer,
+    ProvinceWarehouseSerializer,
+    ShipmentSerializer,
+    WarehouseStockSerializer,
+)
+from .permissions import IsMinistryStaff, IsProvinceStaff, CanManageShipments
+
+
 class MinistryWarehouseViewSet(viewsets.ModelViewSet):
     queryset = MinistryWarehouse.objects.all()
     serializer_class = MinistryWarehouseSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsMinistryStaff]
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    search_fields = ["name", "location"]
+    ordering = ["name"]
 
-# ViewSet لمستودعات المحافظة
+
 class ProvinceWarehouseViewSet(viewsets.ModelViewSet):
     queryset = ProvinceWarehouse.objects.all()
     serializer_class = ProvinceWarehouseSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsMinistryStaff | IsProvinceStaff]
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    search_fields = ["name", "province"]
+    ordering = ["name"]
 
     def get_queryset(self):
-        queryset = super().get_queryset()
-        province = self.request.query_params.get('province')
-        if province:
-            queryset = queryset.filter(province__name=province)
-        return queryset
+        user = self.request.user
+        if getattr(user, "role", None) == "province_staff":
+            return ProvinceWarehouse.objects.filter(staff=user)
+        return super().get_queryset()
 
-# ViewSet لمخزون المستودعات
-class WarehouseInventoryViewSet(viewsets.ModelViewSet):
-    queryset = WarehouseInventory.objects.all()
-    serializer_class = WarehouseInventorySerializer
-    permission_classes = [IsAuthenticated]
 
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        warehouse_id = self.request.query_params.get('warehouse')
-        if warehouse_id:
-            queryset = queryset.filter(warehouse_id=warehouse_id)
-        return queryset
-
-# ViewSet للشحنات
 class ShipmentViewSet(viewsets.ModelViewSet):
-    queryset = Shipment.objects.all()
+    queryset = Shipment.objects.all().select_related(
+        "from_ministry", "to_province", "assigned_courier"
+    )
     serializer_class = ShipmentSerializer
-    permission_classes = [IsAuthenticated]
-    
+    permission_classes = [CanManageShipments]
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ["status", "courier_role", "assigned_courier", "to_province"]
+    search_fields = ["to_school_name", "to_province__name", "to_province__province"]
+    ordering = ["-created_at"]
+
     def get_queryset(self):
-        queryset = super().get_queryset()
-        
-        # فلترة حسب المندوب
-        driver_id = self.request.query_params.get('driver_id')
-        if driver_id:
-            queryset = queryset.filter(assigned_driver_id=driver_id)
-            
-        # فلترة حسب النوع
-        shipment_type = self.request.query_params.get('shipment_type')
-        if shipment_type:
-            queryset = queryset.filter(shipment_type=shipment_type)
-            
-        # فلترة حسب الحالة
-        status_filter = self.request.query_params.get('status')
-        if status_filter:
-            queryset = queryset.filter(status=status_filter)
-            
-        return queryset
-    
-    @action(detail=False, methods=['post'])
-    def scan_qr_code(self, request):
-        """مسح QR Code لتسليم الشحنة"""
-        qr_code = request.data.get('qr_code')
-        driver_id = request.data.get('driver_id')
-        
-        try:
-            shipment = Shipment.objects.get(qr_code=qr_code)
-            return self._handle_shipment_delivery(shipment, driver_id)
-                
-        except Shipment.DoesNotExist:
-            return Response({
-                'success': False,
-                'message': 'QR Code غير صحيح'
-            }, status=status.HTTP_404_NOT_FOUND)
-    
-    def _handle_shipment_delivery(self, shipment, driver_id):
-        """معالجة تسليم شحنة"""
-        if shipment.assigned_driver_id != int(driver_id):
-            return Response({
-                'success': False,
-                'message': 'هذه الشحنة غير مسندة لك'
-            }, status=status.HTTP_403_FORBIDDEN)
-        
-        if shipment.status != 'in_transit':
-            return Response({
-                'success': False,
-                'message': 'لا يمكن تسليم شحنة غير قيد النقل'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        with transaction.atomic():
-            shipment.status = 'delivered'
-            shipment.delivered_at = timezone.now()
-            shipment.save()
-            
-            return Response({
-                'success': True,
-                'message': 'تم تسليم الشحنة بنجاح',
-                'shipment': ShipmentSerializer(shipment).data
-            })
+        user = self.request.user
+        qs = super().get_queryset()
 
-    @action(detail=False, methods=['get'])
-    def driver_shipments(self, request):
-        """جلب شحنات المندوب"""
-        driver_id = request.query_params.get('driver_id')
-        shipments = Shipment.objects.filter(assigned_driver_id=driver_id)
-        serializer = self.get_serializer(shipments, many=True)
-        return Response(serializer.data)
-    
-    @action(detail=True, methods=['post'])
-    def assign_driver(self, request, pk=None):
-        """إسناد شحنة لمندوب"""
-        shipment = self.get_object()
-        driver_id = request.data.get('driver_id')
-        
-        try:
-            from users.models import User
-            driver = User.objects.get(id=driver_id, role__in=['ministry_driver', 'province_driver'])
-            
-            shipment.assigned_driver = driver
-            shipment.status = 'assigned_to_driver'
-            shipment.assigned_at = timezone.now()
-            shipment.save()
-            
-            return Response({
-                'success': True,
-                'message': 'تم إسناد الشحنة للمندوب بنجاح'
-            })
-            
-        except User.DoesNotExist:
-            return Response({
-                'success': False,
-                'message': 'المستخدم ليس مندوب توصيل'
-            }, status=status.HTTP_400_BAD_REQUEST)
-    
-    @action(detail=True, methods=['post'])
-    def mark_in_transit(self, request, pk=None):
-        """تحديد الشحنة كقيد النقل"""
-        shipment = self.get_object()
-        
-        if shipment.status != 'assigned_to_driver':
-            return Response({
-                'success': False,
-                'message': 'لا يمكن تحويل شحنة غير مسندة للمندوب'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        shipment.status = 'in_transit'
-        shipment.shipped_at = timezone.now()
-        shipment.save()
-        
-        return Response({
-            'success': True,
-            'message': 'تم تحويل الشحنة لقيد النقل'
-        })
-    
-    @action(detail=True, methods=['post'])
+        if getattr(user, "role", None) == "province_staff":
+            return qs.filter(to_province__in=user.province_warehouses.all())
+
+        if getattr(user, "role", None) in ["ministry_courier", "province_courier"]:
+            return qs.filter(assigned_courier=user)
+
+        return qs
+
+    @action(detail=True, methods=["post"])
+    def assign(self, request, pk=None):
+        obj = self.get_object()
+        courier_id = request.data.get("courier_id")
+        if not courier_id:
+            return Response({"detail": "courier_id is required."}, status=400)
+        obj.assigned_courier_id = courier_id
+        obj.status = "assigned"
+        obj.save(update_fields=["assigned_courier_id", "status"])
+        return Response(self.get_serializer(obj).data)
+
+    @action(detail=True, methods=["post"])
+    def start_delivery(self, request, pk=None):
+        obj = self.get_object()
+        obj.status = "out_for_delivery"
+        obj.save(update_fields=["status"])
+        return Response(self.get_serializer(obj).data)
+
+    @action(detail=True, methods=["post"])
+    def delivered(self, request, pk=None):
+        obj = self.get_object()
+        obj.status = "delivered"
+        obj.save(update_fields=["status"])
+        return Response(self.get_serializer(obj).data)
+
+    @action(detail=True, methods=["post"])
     def confirm(self, request, pk=None):
-        """تأكيد الشحنة (سيؤدي لخصم المخزون عبر Celery)"""
-        shipment = self.get_object()
-        
-        if shipment.status != 'preparing':
-            return Response({
-                'success': False,
-                'message': 'لا يمكن تأكيد شحنة غير قيد التجهيز'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        shipment.status = 'confirmed'
-        shipment.save()
-        
-        return Response({
-            'success': True,
-            'message': 'تم تأكيد الشحنة وسيتم خصم المخزون'
-        })
+        obj = self.get_object()
+        obj.status = "confirmed"
+        obj.save(update_fields=["status"])
+        return Response(self.get_serializer(obj).data)
 
-# دوال API منفصلة
-@api_view(['POST'])
-def scan_qr_code(request):
-    qr_code = request.data.get('qr_code')
-    driver_id = request.data.get('driver_id')
-    
-    try:
-        shipment = Shipment.objects.get(qr_code=qr_code)
-        
-        if shipment.assigned_driver_id != int(driver_id):
-            return Response({
-                'success': False,
-                'message': 'هذه الشحنة غير مسندة لك'
-            }, status=status.HTTP_403_FORBIDDEN)
-        
-        if shipment.status != 'in_transit':
-            return Response({
-                'success': False,
-                'message': 'لا يمكن تسليم شحنة غير قيد النقل'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        shipment.status = 'delivered'
-        shipment.delivered_at = timezone.now()
-        shipment.save()
-        
-        return Response({
-            'success': True,
-            'message': 'تم تسليم الشحنة بنجاح',
-            'shipment': ShipmentSerializer(shipment).data
-        })
-            
-    except Shipment.DoesNotExist:
-        return Response({
-            'success': False,
-            'message': 'QR Code غير صحيح'
-        }, status=status.HTTP_404_NOT_FOUND)
 
-@api_view(['GET'])
-def driver_shipments(request):
-    """جلب شحنات المندوب"""
-    driver_id = request.query_params.get('driver_id')
-    shipments = Shipment.objects.filter(assigned_driver_id=driver_id)
-    serializer = ShipmentSerializer(shipments, many=True)
-    return Response(serializer.data)
+class WarehouseStockViewSet(viewsets.ModelViewSet):
+    queryset = WarehouseStock.objects.select_related(
+        "ministry_warehouse", "province_warehouse", "book"
+    )
+    serializer_class = WarehouseStockSerializer
+    permission_classes = [IsMinistryStaff | IsProvinceStaff]
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ["ministry_warehouse", "province_warehouse", "term", "book"]
+    search_fields = ["book__subject", "book__grade_level"]
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = super().get_queryset()
+        if getattr(user, "role", None) == "province_staff":
+            return qs.filter(province_warehouse__in=user.province_warehouses.all())
+        return qs
+
+    @action(detail=False, methods=["get"])
+    def low_stock(self, request):
+        qs = self.get_queryset().filter(quantity__lte=models.F("min_threshold"))
+        ser = self.get_serializer(qs, many=True)
+        return Response(ser.data)

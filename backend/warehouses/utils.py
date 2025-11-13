@@ -7,7 +7,7 @@ from typing import List, Dict, Any, Tuple
 
 from django.conf import settings
 
-# مسار تخزين الملفات (داخل الحاوية). نستخدم MEDIA_ROOT إن كان معرفًا، وإلا مجلد data/qr
+# مسار تخزين الملفات
 MEDIA_ROOT = getattr(settings, "MEDIA_ROOT", os.path.join(settings.BASE_DIR, "data"))
 QR_DIR = os.path.join(MEDIA_ROOT, "qr", "shipments")
 PDF_DIR = os.path.join(MEDIA_ROOT, "pdf", "shipments")
@@ -20,17 +20,13 @@ def ensure_dirs() -> None:
     os.makedirs(PDF_DIR, exist_ok=True)
 
 def random_code(n: int = 10) -> str:
-    """كود عشوائي بسيط للأغراض العامة (تذييل/تتبّع)."""
-    import secrets, string
+    """كود عشوائي بسيط."""
     alphabet = string.ascii_uppercase + string.digits
     return "".join(secrets.choice(alphabet) for _ in range(n))
 
 def pack_qr_payload(shipment) -> Dict[str, Any]:
-    """
-    حمولة الـ QR: بيانات أساسية تكفي للتحقق السريع.
-    لا نضع معلومات حساسة؛ فقط معرفات ورقم تتبّع.
-    """
-    return {
+    """حمولة الـ QR."""
+    payload = {
         "shipment_id": shipment.id,
         "from_warehouse_id": shipment.from_warehouse_id,
         "to_province_id": shipment.to_province_id,
@@ -126,3 +122,24 @@ def render_shipment_pdf(shipment) -> str:
     c.showPage()
     c.save()
     return pdf_path
+
+def get_shipment_pdf_url(shipment) -> str:
+    """رابط PDF الشحنة."""
+    pdf_path = os.path.join(PDF_DIR, f"shipment_{shipment.id}.pdf")
+    if os.path.exists(pdf_path):
+        return f"/media/pdf/shipments/shipment_{shipment.id}.pdf"
+    return None
+
+def generate_shipment_qr(shipment) -> dict:
+    """إنشاء QR للشحنة."""
+    payload = pack_qr_payload(shipment)
+    png_bytes = make_qr_image_bytes(payload)
+    qr_path = save_qr_png_for_shipment(shipment, png_bytes)
+    
+    return {
+        "payload": payload,
+        "png_bytes": png_bytes,
+        "base64": qr_base64(png_bytes),
+        "file_path": qr_path,
+        "pdf_path": render_shipment_pdf(shipment)
+    }

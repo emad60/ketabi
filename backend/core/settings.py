@@ -44,12 +44,13 @@ INSTALLED_APPS = [
 
     # Project apps
     'users',
-    'warehouses',
+    "warehouses.apps.WarehousesConfig",
     'requests',
     'books',
     'schools',
     'school_requests',
     'notifications',
+    
 ]
 
 # ==============================
@@ -171,7 +172,7 @@ USE_TZ = True
 # ==============================
 STATIC_URL = 'static/'
 MEDIA_URL = "/media/"
-MEDIA_ROOT = os.path.join(BASE_DIR, "data")
+MEDIA_ROOT = '/app/data/media'
 
 
 # ==============================

@@ -7,16 +7,15 @@ services:
     restart: always
     env_file: .env
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: pgsql        # غيري هذا
+      POSTGRES_USER: pgsql      # غيري هذا  
+      POSTGRES_PASSWORD: pgsql  # غيري هذا
     volumes:
       - ./data/db:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
-      # يفحص جاهزية قاعدة البيانات
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U pgsql -d pgsql"]  # غيري هذا
       interval: 5s
       timeout: 3s
       retries: 10
@@ -37,7 +36,10 @@ services:
     build: ./backend
     container_name: ketabi_backend
     # في service backend، غير command إلى:
-    command: ["tail", "-f", "/dev/null"]
+    command: >
+      sh -lc "./wait-for-db.sh db 5432 &&
+              python manage.py migrate --noinput &&
+              python manage.py runserver 0.0.0.0:8000"
     env_file: .env
     environment:
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-*}

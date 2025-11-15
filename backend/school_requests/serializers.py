@@ -5,9 +5,13 @@ from schools.models import School
 
 
 class BookMiniSerializer(serializers.ModelSerializer):
+    """سيريالايزر مبسط للكتاب يعرض المعلومات الأساسية فقط"""
+    title = serializers.CharField(source='__str__', read_only=True)
+    
     class Meta:
         model = Book
         fields = ["id", "title"]
+        read_only_fields = ["id", "title"]
 
 
 class SchoolMiniSerializer(serializers.ModelSerializer):

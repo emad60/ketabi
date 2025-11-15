@@ -78,9 +78,22 @@ class Shipment(models.Model):
     # الحالة
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
     
+    # تتبع GPS للمندوب (Mobile App)
+    current_latitude = models.FloatField(null=True, blank=True, help_text="موقع المندوب الحالي - خط العرض")
+    current_longitude = models.FloatField(null=True, blank=True, help_text="موقع المندوب الحالي - خط الطول")
+    last_location_update = models.DateTimeField(null=True, blank=True, help_text="آخر تحديث للموقع")
+    
+    # إثبات التسليم (Mobile App)
+    proof_photo = models.ImageField(upload_to='shipments/proof/', null=True, blank=True, help_text="صورة إثبات التسليم")
+    digital_signature = models.ImageField(upload_to='shipments/signatures/', null=True, blank=True, help_text="التوقيع الرقمي")
+    recipient_name = models.CharField(max_length=255, blank=True, default="", help_text="اسم المستلم")
+    delivery_notes = models.TextField(blank=True, default="", help_text="ملاحظات التسليم")
+    
     # طوابع وقت
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    started_delivery_at = models.DateTimeField(null=True, blank=True, help_text="وقت بدء التوصيل")
+    delivered_at = models.DateTimeField(null=True, blank=True, help_text="وقت التسليم الفعلي")
 
     class Meta:
         ordering = ["-created_at"]

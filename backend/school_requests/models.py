@@ -99,4 +99,5 @@ class SchoolRequestItem(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.book.title} x {self.quantity}"
+        """عرض نصي لعنصر الطلب: اسم الكتاب × الكمية"""
+        return f"{self.book} x {self.quantity}"

@@ -5,8 +5,10 @@ psycopg2-binary==2.9.9
 django-cors-headers==4.4.0
 celery==5.4.0
 redis==5.0.1
+django-redis==5.4.0  # Redis Cache
 qrcode[pil]==7.4.2
 Pillow==10.4.0
 reportlab==4.2.5   # PDF 
 djangorestframework-simplejwt==5.3.1
-
+firebase-admin==6.2.0  # Push Notifications
+requests==2.31.0  # Required by firebase-admin

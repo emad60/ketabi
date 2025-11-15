@@ -7,15 +7,15 @@ services:
     restart: always
     env_file: .env
     environment:
-      POSTGRES_DB: pgsql        # غيري هذا
-      POSTGRES_USER: pgsql      # غيري هذا  
-      POSTGRES_PASSWORD: pgsql  # غيري هذا
+      POSTGRES_DB: pgsql      
+      POSTGRES_USER: pgsql      
+      POSTGRES_PASSWORD: pgsql 
     volumes:
       - ./data/db:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U pgsql -d pgsql"]  # غيري هذا
+      test: ["CMD-SHELL", "pg_isready -U pgsql -d pgsql"]  
       interval: 5s
       timeout: 3s
       retries: 10

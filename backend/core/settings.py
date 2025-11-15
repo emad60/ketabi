@@ -20,8 +20,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # ==============================
 # 🔐 Security Settings
 # ==============================
-SECRET_KEY = 'django-insecure-kflkrqn57mhd^n&qy74z7+ctkqik2-*+7t5&g$rl6s9r4@g4+g'
-DEBUG = True
+# استخدام environment variable للـ SECRET_KEY مع قيمة احتياطية للتطوير فقط
+SECRET_KEY = os.getenv(
+    'DJANGO_SECRET_KEY', 
+    'django-insecure-kflkrqn57mhd^n&qy74z7+ctkqik2-*+7t5&g$rl6s9r4@g4+g'
+)
+
+# يجب تعطيل DEBUG في بيئة الإنتاج
+DEBUG = os.getenv('DJANGO_DEBUG', 'True').lower() in ('true', '1', 'yes')
 
 ALLOWED_HOSTS = os.getenv("DJANGO_ALLOWED_HOSTS", "*").split(",")
 
@@ -37,15 +43,16 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
-    # APIs
+    # APIs و Third-party packages
     'rest_framework',
     'rest_framework_simplejwt',
     'django_filters',
+    'corsheaders',  # ✅ تفعيل CORS headers
 
     # Project apps
     'users',
     "warehouses.apps.WarehousesConfig",
-    'requests',
+    'book_requests',
     'books',
     'schools',
     'school_requests',
@@ -99,6 +106,17 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
+    # ⚡ Rate Limiting (Throttling)
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "100/hour",  # للمستخدمين غير المسجلين
+        "user": "1000/hour",  # للمستخدمين المسجلين
+        "uploads": "20/hour",  # لرفع الملفات
+        "reports": "50/hour",  # للتقارير
+    },
 }
 
 SIMPLE_JWT = {
@@ -115,6 +133,7 @@ SIMPLE_JWT = {
 # ==============================
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'corsheaders.middleware.CorsMiddleware',  # ✅ يجب أن يكون في الأول بعد SecurityMiddleware
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -145,6 +164,32 @@ DATABASES = {
         "CONN_MAX_AGE": 60,
     }
 }
+
+
+# ==============================
+# ⚡ Redis Cache Configuration
+# ==============================
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": os.getenv("REDIS_URL", "redis://redis:6379/1"),
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            "SOCKET_CONNECT_TIMEOUT": 5,
+            "SOCKET_TIMEOUT": 5,
+            "CONNECTION_POOL_KWARGS": {
+                "max_connections": 50,
+                "retry_on_timeout": True
+            },
+        },
+        "KEY_PREFIX": "ketabi",
+        "TIMEOUT": 300,  # 5 minutes default
+    }
+}
+
+# استخدام Redis للـ sessions (optional - أفضل للأداء)
+SESSION_ENGINE = "django.contrib.sessions.backends.cache"
+SESSION_CACHE_ALIAS = "default"
 
 
 # ==============================
@@ -180,8 +225,86 @@ MEDIA_ROOT = '/app/data/media'
 # ==============================
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-CORS_ALLOW_ALL_ORIGINS = True
-CSRF_TRUSTED_ORIGINS = ["http://localhost:*", "http://127.0.0.1:*"]
+# ==============================
+# 🌐 CORS Settings
+# ==============================
+# في التطوير: السماح لجميع المصادر
+# في الإنتاج: تحديد المصادر المسموحة
+if DEBUG:
+    CORS_ALLOW_ALL_ORIGINS = True
+else:
+    # في الإنتاج، حدد النطاقات المسموحة
+    CORS_ALLOWED_ORIGINS = os.getenv(
+        'CORS_ALLOWED_ORIGINS',
+        'http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://127.0.0.1:3001'
+    ).split(',')
 
-CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL')
-CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND')
+# السماح بإرسال Cookies والـ credentials
+CORS_ALLOW_CREDENTIALS = True
+
+# CSRF Settings
+CSRF_TRUSTED_ORIGINS = os.getenv(
+    'CSRF_TRUSTED_ORIGINS',
+    'http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000'
+).split(',')
+
+# ==============================
+# 📋 Celery Settings
+# ==============================
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://redis:6379/0')
+CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://redis:6379/0')
+
+# ==============================
+# 📊 Logging Configuration
+# ==============================
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '[{levelname}] {asctime} {module} - {message}',
+            'style': '{',
+            'datefmt': '%Y-%m-%d %H:%M:%S'
+        },
+        'simple': {
+            'format': '[{levelname}] {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'level': 'INFO',
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
+        'file_errors': {
+            'level': 'ERROR',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(BASE_DIR, 'logs', 'errors.log'),
+            'maxBytes': 10 * 1024 * 1024,  # 10 MB
+            'backupCount': 5,
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console', 'file_errors'],
+            'level': 'INFO',
+        },
+        'warehouses': {
+            'handlers': ['console', 'file_errors'],
+            'level': 'DEBUG' if DEBUG else 'INFO',
+        },
+        'notifications': {
+            'handlers': ['console'],
+            'level': 'INFO',
+        },
+    },
+}
+
+# إنشاء مجلد logs
+os.makedirs(os.path.join(BASE_DIR, 'logs'), exist_ok=True)
+
+
+# Firebase
+FIREBASE_CREDENTIALS_PATH = os.getenv('FIREBASE_CREDENTIALS_PATH', None)

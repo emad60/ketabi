@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ketabi API Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            direction: rtl;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border-right: 4px solid #667eea;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+            transition: all 0.3s;
+        }
+        button:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102,126,234,0.4);
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 15px;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .success {
+            border-right: 4px solid #28a745;
+            background: #d4edda;
+        }
+        .error {
+            border-right: 4px solid #dc3545;
+            background: #f8d7da;
+        }
+        .info {
+            border-right: 4px solid #17a2b8;
+            background: #d1ecf1;
+        }
+        .status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        .status.success { background: #28a745; color: white; }
+        .status.error { background: #dc3545; color: white; }
+        .status.pending { background: #ffc107; color: #333; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Ketabi API Test Dashboard</h1>
+        
+        <!-- Test 1: Login -->
+        <div class="test-section">
+            <h3>1️⃣ اختبار تسجيل الدخول</h3>
+            <button onclick="testLogin()">اختبار Login API</button>
+            <div id="login-result"></div>
+        </div>
+
+        <!-- Test 2: Statistics -->
+        <div class="test-section">
+            <h3>2️⃣ اختبار الإحصائيات</h3>
+            <button onclick="testStats()" id="statsBtn" disabled>اختبار Statistics API</button>
+            <div id="stats-result"></div>
+        </div>
+
+        <!-- Test 3: Environment -->
+        <div class="test-section">
+            <h3>3️⃣ معلومات البيئة</h3>
+            <button onclick="checkEnv()">فحص Environment</button>
+            <div id="env-result"></div>
+        </div>
+    </div>
+
+    <script>
+        let accessToken = null;
+        const API_URL = 'http://localhost:8000/api';
+
+        async function testLogin() {
+            const resultDiv = document.getElementById('login-result');
+            resultDiv.innerHTML = '<span class="status pending">جاري الاختبار...</span>';
+
+            try {
+                const response = await fetch(`${API_URL}/users/login/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        username: 'ministry_admin',
+                        password: 'Admin@123'
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    accessToken = data.access;
+                    document.getElementById('statsBtn').disabled = false;
+                    
+                    resultDiv.innerHTML = `
+                        <span class="status success">✅ نجح</span>
+                        <div class="result success">
+                            <strong>✅ تسجيل الدخول نجح!</strong><br><br>
+                            <strong>المستخدم:</strong> ${data.user.username}<br>
+                            <strong>الدور:</strong> ${data.user.role}<br>
+                            <strong>البريد:</strong> ${data.user.email}<br>
+                            <strong>Access Token:</strong> ${accessToken.substring(0, 50)}...<br><br>
+                            <strong>البيانات الكاملة:</strong><br>
+                            ${JSON.stringify(data, null, 2)}
+                        </div>
+                    `;
+                } else {
+                    throw new Error(data.message || 'Login failed');
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <span class="status error">❌ فشل</span>
+                    <div class="result error">
+                        <strong>❌ خطأ:</strong><br>
+                        ${error.message}<br><br>
+                        <strong>التفاصيل:</strong> تحقق من تشغيل Backend
+                    </div>
+                `;
+            }
+        }
+
+        async function testStats() {
+            const resultDiv = document.getElementById('stats-result');
+            
+            if (!accessToken) {
+                resultDiv.innerHTML = `
+                    <div class="result error">
+                        ❌ يجب تسجيل الدخول أولاً
+                    </div>
+                `;
+                return;
+            }
+
+            resultDiv.innerHTML = '<span class="status pending">جاري الاختبار...</span>';
+
+            try {
+                const response = await fetch(`${API_URL}/warehouses/stats/ministry/`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json',
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    resultDiv.innerHTML = `
+                        <span class="status success">✅ نجح</span>
+                        <div class="result success">
+                            <strong>✅ تم تحميل الإحصائيات!</strong><br><br>
+                            <strong>📊 الإحصائيات:</strong><br>
+                            • المخازن: ${data.warehouses.total} (وزارة: ${data.warehouses.ministry_warehouses}, محافظات: ${data.warehouses.province_warehouses})<br>
+                            • الكتب: ${data.stock.total_books}<br>
+                            • الشحنات: ${data.shipments.total}<br>
+                            • المناديب: ${data.couriers.total_ministry_couriers}<br>
+                            • طلبات المدارس: ${data.school_requests.total}<br><br>
+                            <strong>البيانات الكاملة:</strong><br>
+                            ${JSON.stringify(data, null, 2)}
+                        </div>
+                    `;
+                } else {
+                    throw new Error(`HTTP ${response.status}: ${data.detail || 'Unknown error'}`);
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <span class="status error">❌ فشل</span>
+                    <div class="result error">
+                        <strong>❌ خطأ في تحميل الإحصائيات:</strong><br>
+                        ${error.message}<br><br>
+                        <strong>الأسباب المحتملة:</strong><br>
+                        • Token منتهي الصلاحية<br>
+                        • Backend لا يعمل<br>
+                        • CORS error<br>
+                        • URL خطأ
+                    </div>
+                `;
+            }
+        }
+
+        function checkEnv() {
+            const resultDiv = document.getElementById('env-result');
+            
+            const envInfo = {
+                'API URL': API_URL,
+                'Frontend URL': window.location.origin,
+                'Browser': navigator.userAgent,
+                'Local Storage Items': localStorage.length,
+                'Access Token': accessToken ? '✅ موجود' : '❌ غير موجود'
+            };
+
+            resultDiv.innerHTML = `
+                <div class="result info">
+                    <strong>ℹ️ معلومات البيئة:</strong><br><br>
+                    ${Object.entries(envInfo).map(([key, value]) => 
+                        `<strong>${key}:</strong> ${value}`
+                    ).join('<br>')}
+                </div>
+            `;
+        }
+
+        // Auto test on load
+        window.onload = () => {
+            checkEnv();
+            console.log('🧪 Ketabi API Test Dashboard loaded');
+            console.log('📍 API URL:', API_URL);
+        };
+    </script>
+</body>
+</html>

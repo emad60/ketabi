@@ -1,8 +1,12 @@
 # users/urls.py
+"""
+ملف URLs فارغ - تم نقل جميع endpoints إلى UserViewSet
+استخدم:
+- POST /api/users/login/ للتسجيل
+- GET /api/users/profile/ للحصول على الملف الشخصي
+"""
 from django.urls import path
-from .views import login_view, user_profile
 
 urlpatterns = [
-    path('login/', login_view, name='user-login'),
-    path('profile/', user_profile, name='user-profile'),
+    # تم نقل جميع endpoints إلى ViewSet في core/urls.py
 ]

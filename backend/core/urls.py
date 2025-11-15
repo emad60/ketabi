@@ -15,7 +15,7 @@ from warehouses.views import (
     WarehouseStockViewSet,
 )
 
-from requests.views import BookRequestViewSet
+from book_requests.views import BookRequestViewSet
 from notifications.views import NotificationViewSet
 
 from django.conf import settings
@@ -43,8 +43,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include(router.urls)),
     path('api/users/', include('users.urls')),
-    # ❌ إزيل هذا السطر لأنه يسبب تعارض
-    # path('api/warehouses/', include('warehouses.urls')),
+    path('api/warehouses/', include('warehouses.urls')),  # ✅ تفعيل warehouses URLs
     path('api/auth/login/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 ]

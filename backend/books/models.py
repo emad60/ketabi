@@ -81,3 +81,11 @@ class Book(models.Model):
 
     def __str__(self):
         return f"{self.get_subject_display()} - {self.get_grade_level_display()} - {self.get_term_display()}"
+    
+    @property
+    def title(self):
+        """
+        عنوان الكتاب المُركّب من المادة والصف والفصل
+        يُستخدم للتوافقية مع الكود القديم
+        """
+        return self.__str__()

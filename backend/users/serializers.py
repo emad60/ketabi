@@ -1,3 +1,4 @@
+# users/serializers.py
 from rest_framework import serializers
 from .models import User, ROLE_CHOICES
 
@@ -17,6 +18,8 @@ class UserSerializer(serializers.ModelSerializer):
             "email",
             "role",
             "role_display",
+            "province",   # ⭐ جديد في الـ API
+            "school",     # ⭐ ربط موظف المدرسة بمدرسته
             "is_active",
             "is_staff",
             "password",   # write-only
@@ -27,6 +30,21 @@ class UserSerializer(serializers.ModelSerializer):
         # بناءً على ROLE_CHOICES
         mapping = dict(ROLE_CHOICES)
         return mapping.get(obj.role, obj.role)
+
+    def validate(self, attrs):
+        """
+        التحقق العام:
+        - لو الدور school_staff لازم يحدد مدرسة.
+        """
+        role = attrs.get("role") or getattr(self.instance, "role", None)
+        school = attrs.get("school") or getattr(self.instance, "school", None)
+
+        if role == "school_staff" and not school:
+            raise serializers.ValidationError(
+                {"school": "يجب اختيار مدرسة لموظف المدرسة."}
+            )
+
+        return attrs
 
     def create(self, validated_data):
         password = validated_data.pop("password", None)

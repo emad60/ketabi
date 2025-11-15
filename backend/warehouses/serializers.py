@@ -1,4 +1,8 @@
 # warehouses/serializers.py
+"""
+Serializers لتطبيق المستودعات والشحنات
+يتضمن: المستودعات، الشحنات، المخزون، وحركات المخزون
+"""
 from rest_framework import serializers
 
 from .models import (
@@ -17,6 +21,7 @@ from .utils import pack_qr_payload, make_qr_image_bytes, save_qr_png_for_shipmen
 # =========================
 
 class MinistryWarehouseSerializer(serializers.ModelSerializer):
+    """سيريالايزر لمستودعات الوزارة"""
     staff_count = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
@@ -24,10 +29,12 @@ class MinistryWarehouseSerializer(serializers.ModelSerializer):
         fields = ["id", "name", "location", "staff", "staff_count"]
 
     def get_staff_count(self, obj):
+        """حساب عدد الموظفين المرتبطين بالمستودع"""
         return obj.staff.count()
 
 
 class ProvinceWarehouseSerializer(serializers.ModelSerializer):
+    """سيريالايزر لمستودعات المحافظات"""
     staff_count = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
@@ -35,11 +42,15 @@ class ProvinceWarehouseSerializer(serializers.ModelSerializer):
         fields = ["id", "name", "province", "staff", "staff_count"]
 
     def get_staff_count(self, obj):
+        """حساب عدد الموظفين المرتبطين بالمستودع"""
         return obj.staff.count()
 
 
 class WarehouseStockSerializer(serializers.ModelSerializer):
-    # نتجنب الاعتماد على حقول قد لا تكون موجودة في Book (مثل title/isbn)
+    """
+    سيريالايزر لإدارة المخزون في المستودعات
+    يعرض معلومات الكتاب والمستودع والكمية المتوفرة
+    """
     book_label = serializers.SerializerMethodField(read_only=True)
     warehouse_name = serializers.SerializerMethodField(read_only=True)
     is_low_stock = serializers.BooleanField(read_only=True)
@@ -63,15 +74,20 @@ class WarehouseStockSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at", "updated_at", "book_label", "warehouse_name", "is_low_stock"]
 
     def get_book_label(self, obj):
-        # يعتمد على __str__ لكتابك (أو عدليه لما يناسبك)
+        """عرض اسم الكتاب بشكل منسق"""
         return str(obj.book)
 
     def get_warehouse_name(self, obj):
+        """عرض اسم المستودع سواء كان وزارة أو محافظة"""
         return obj.ministry_warehouse.name if obj.ministry_warehouse else obj.province_warehouse.name
 
 
 class StockMovementSerializer(serializers.ModelSerializer):
-    created_by_name = serializers.CharField(source="created_by.get_full_name", read_only=True)
+    """
+    سيريالايزر لحركات المخزون (إدخال/إخراج/تعديل)
+    يُستخدم للتدقيق والمتابعة
+    """
+    created_by_name = serializers.CharField(source="created_by.full_name", read_only=True)
     book_label = serializers.CharField(source="stock.book.__str__", read_only=True)
 
     class Meta:
@@ -98,10 +114,14 @@ class StockMovementSerializer(serializers.ModelSerializer):
 # =========================
 
 class ShipmentSerializer(serializers.ModelSerializer):
+    """
+    سيريالايزر للشحنات
+    يتضمن: التحقق من المخزون، توليد QR، وإدارة حالة الشحنة
+    """
     # معلومات مساعدة للعرض
     from_ministry_name = serializers.CharField(source="from_ministry.name", read_only=True)
     to_province_name = serializers.CharField(source="to_province.name", read_only=True)
-    assigned_courier_name = serializers.CharField(source="assigned_courier.get_full_name", read_only=True)
+    assigned_courier_name = serializers.CharField(source="assigned_courier.full_name", read_only=True)
 
     # فحوصات المخزون (نملؤها في validate)
     stock_available = serializers.BooleanField(read_only=True)
@@ -122,10 +142,23 @@ class ShipmentSerializer(serializers.ModelSerializer):
             "books",        # صيغة: [{book_id, quantity, term}, ...]
             "qr_code",
             "status",
-            "stock_available",
-            "stock_issues",
+            # GPS Tracking
+            "current_latitude",
+            "current_longitude",
+            "last_location_update",
+            # Proof of Delivery
+            "proof_photo",
+            "digital_signature",
+            "recipient_name",
+            "delivery_notes",
+            # Timestamps
             "created_at",
             "updated_at",
+            "started_delivery_at",
+            "delivered_at",
+            # Stock validation
+            "stock_available",
+            "stock_issues",
         ]
         read_only_fields = [
             "id",
@@ -137,6 +170,9 @@ class ShipmentSerializer(serializers.ModelSerializer):
             "assigned_courier_name",
             "stock_available",
             "stock_issues",
+            "last_location_update",
+            "started_delivery_at",
+            "delivered_at",
         ]
 
     def validate_books(self, value):

@@ -51,3 +51,4 @@ dist/
 
 # Local overrides
 *.local.json
+backend/firebase-credentials.json

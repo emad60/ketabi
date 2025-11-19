@@ -30,9 +30,13 @@ class UserViewSet(viewsets.ModelViewSet):
         - create, update, delete: للأدمن فقط
         - list, retrieve: للمستخدمين المصادق عليهم
         """
-        if self.action == 'login':
+        # السماح بـ OPTIONS requests بدون authentication
+        if self.request.method == 'OPTIONS':
+            return [AllowAny()]
+            
+        if self.action in ['login', 'create']:
             permission_classes = [AllowAny]
-        elif self.action in ['create', 'update', 'partial_update', 'destroy']:
+        elif self.action in ['update', 'partial_update', 'destroy']:
             permission_classes = [IsAdminUser]
         else:
             permission_classes = [IsAuthenticated]

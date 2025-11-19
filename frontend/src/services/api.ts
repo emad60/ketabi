@@ -18,10 +18,15 @@ const api = axios.create({
 // Request interceptor - إضافة JWT token تلقائياً
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const token = localStorage.getItem('access_token');
+    // تجاهل إضافة token لطلبات login
+    const isLoginRequest = config.url?.includes('/users/login/');
     
-    if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
+    if (!isLoginRequest) {
+      const token = localStorage.getItem('access_token');
+      
+      if (token && config.headers) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
     }
     
     return config;
@@ -37,8 +42,11 @@ api.interceptors.response.use(
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
-    // إذا كان الخطأ 401 (Unauthorized) والـ request لم يتم retry بعد
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    // تجاهل 401 إذا كان من صفحة تسجيل الدخول
+    const isLoginRequest = originalRequest.url?.includes('/users/login/');
+    
+    // إذا كان الخطأ 401 (Unauthorized) والـ request لم يتم retry بعد وليس من صفحة Login
+    if (error.response?.status === 401 && !originalRequest._retry && !isLoginRequest) {
       originalRequest._retry = true;
 
       try {
@@ -71,7 +79,7 @@ api.interceptors.response.use(
         localStorage.removeItem('user');
         
         // إعادة توجيه لصفحة Login
-        if (typeof window !== 'undefined') {
+        if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
           window.location.href = '/login';
         }
         

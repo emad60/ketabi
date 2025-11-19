@@ -15,7 +15,7 @@ from warehouses.views import (
     WarehouseStockViewSet,
 )
 
-from book_requests.views import BookRequestViewSet
+from book_requests.views import BookRequestViewSet, ProvinceBookRequestViewSet
 from notifications.views import NotificationViewSet
 
 from django.conf import settings
@@ -36,6 +36,8 @@ router.register(r"warehouses/shipments", ShipmentViewSet, basename="shipment")
 router.register(r"warehouses/stocks", WarehouseStockViewSet, basename="warehouse-stock")
 #router.register(r"warehouses/reports", ReportViewSet, basename="report")
 
+# Book Requests - register specific routes before general routes
+router.register(r'book-requests/province', ProvinceBookRequestViewSet, basename='province-request')
 router.register(r'book-requests', BookRequestViewSet, basename='book-request')
 router.register(r'notifications', NotificationViewSet, basename='notifications')
 

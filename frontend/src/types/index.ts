@@ -36,6 +36,7 @@ export interface LoginCredentials {
 }
 
 export interface LoginResponse {
+  success: boolean;
   access: string;
   refresh: string;
   user: User;

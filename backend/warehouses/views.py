@@ -33,19 +33,37 @@ from .reports import WarehouseReports, PDFReportGenerator
 class MinistryWarehouseViewSet(viewsets.ModelViewSet):
     queryset = MinistryWarehouse.objects.all()
     serializer_class = MinistryWarehouseSerializer
-    permission_classes = [IsMinistryStaff]
+    permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     search_fields = ["name", "location"]
     ordering = ["name"]
+    
+    def get_permissions(self):
+        """
+        Ministry staff can do everything
+        Province staff can only view (list, retrieve)
+        """
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [IsMinistryStaff()]
+        return [IsAuthenticated()]
 
 
 class ProvinceWarehouseViewSet(viewsets.ModelViewSet):
     queryset = ProvinceWarehouse.objects.all()
     serializer_class = ProvinceWarehouseSerializer
-    permission_classes = [IsMinistryStaff | IsProvinceStaff]
+    permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     search_fields = ["name", "province"]
     ordering = ["name"]
+    
+    def get_permissions(self):
+        """
+        Everyone can view
+        Only ministry staff can create/update/delete
+        """
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [IsMinistryStaff()]
+        return [IsAuthenticated()]
 
     def get_queryset(self):
         user = self.request.user
@@ -59,11 +77,20 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         "from_ministry", "to_province", "assigned_courier"
     )
     serializer_class = ShipmentSerializer
-    permission_classes = [CanManageShipments]
+    permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ["status", "courier_role", "assigned_courier", "to_province"]
     search_fields = ["to_school_name", "to_province__name", "to_province__province"]
     ordering = ["-created_at"]
+    
+    def get_permissions(self):
+        """
+        Ministry and province staff can view
+        Only ministry staff can create/update/delete
+        """
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [IsMinistryStaff()]
+        return [IsAuthenticated()]
 
     def get_queryset(self):
         user = self.request.user
@@ -231,15 +258,22 @@ def province_dashboard_stats(request):
     user = request.user
     
     # فلترة بناءً على صلاحيات المستخدم
-    if user.role == 'province_staff':
-        province_warehouses = user.province_warehouses.all()
+    if user.role in ['province_staff', 'province_warehouse', 'province_driver']:
+        # Get province warehouses for this user's province
+        if not user.province:
+            return Response({
+                'error': 'User has no province assigned'
+            }, status=status.HTTP_403_FORBIDDEN)
+        province_warehouses = ProvinceWarehouse.objects.filter(province=user.province)
     else:
         # إذا كان admin أو ministry staff، عرض كل المحافظات
         province_warehouses = ProvinceWarehouse.objects.all()
     
     if not province_warehouses.exists():
         return Response({
-            'error': 'No province warehouses found for this user'
+            'error': 'No province warehouses found for this user',
+            'user_province': user.province,
+            'user_role': user.role
         }, status=status.HTTP_403_FORBIDDEN)
     
     province_ids = list(province_warehouses.values_list('id', flat=True))
@@ -268,9 +302,10 @@ def province_dashboard_stats(request):
     ).distinct().count()
     
     # طلبات المدارس في المحافظة
-    # نفترض أن SchoolRequest لديه علاقة province أو يمكن الوصول لها
+    # نستخدم province__name لأن school.province هو ForeignKey لـ Province model
+    province_names = list(province_warehouses.values_list('province', flat=True))
     school_requests = SchoolRequest.objects.filter(
-        school__province__in=province_warehouses.values_list('province', flat=True)
+        school__province__name__in=province_names
     )
     total_requests = school_requests.count()
     pending_requests = school_requests.filter(status='pending').count()
@@ -882,3 +917,57 @@ def my_active_shipments(request):
             ).count()
         }
     })
+
+
+# ========================================
+# QR Code and Report Views
+# ========================================
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def shipment_qr_code(request, shipment_id):
+    """
+    إرجاع QR code للشحنة كصورة PNG
+    """
+    from django.http import HttpResponse, Http404
+    from .utils import make_qr_image_bytes, pack_qr_payload
+    
+    try:
+        shipment = Shipment.objects.get(id=shipment_id)
+    except Shipment.DoesNotExist:
+        raise Http404("الشحنة غير موجودة")
+    
+    # توليد QR code
+    payload = pack_qr_payload(shipment)
+    qr_bytes = make_qr_image_bytes(payload)
+    
+    # إرجاع الصورة
+    response = HttpResponse(qr_bytes, content_type='image/png')
+    response['Content-Disposition'] = f'inline; filename="shipment_{shipment_id}_qr.png"'
+    return response
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def shipment_pdf_report(request, shipment_id):
+    """
+    إنشاء وإرجاع تقرير PDF للشحنة
+    """
+    from django.http import HttpResponse, Http404
+    from .reports import PDFReportGenerator
+    
+    try:
+        shipment = Shipment.objects.select_related(
+            'from_ministry', 'to_province', 'assigned_courier'
+        ).get(id=shipment_id)
+    except Shipment.DoesNotExist:
+        raise Http404("الشحنة غير موجودة")
+    
+    # إنشاء PDF
+    pdf_gen = PDFReportGenerator()
+    pdf_buffer = pdf_gen.generate_shipment_report(shipment)
+    
+    # إرجاع PDF
+    response = HttpResponse(pdf_buffer, content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="shipment_{shipment_id}_report.pdf"'
+    return response

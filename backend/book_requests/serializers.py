@@ -1,23 +1,175 @@
 from rest_framework import serializers
-from .models import BookRequest
+from .models import BookRequest, BookRequestItem
+from books.models import Book
+
+# خريطة لتحويل أسماء الصفوف إلى أرقام
+GRADE_NAME_TO_NUMBER = {
+    'الصف الأول': '1',
+    'الصف الثاني': '2',
+    'الصف الثالث': '3',
+    'الصف الرابع': '4',
+    'الصف الخامس': '5',
+    'الصف السادس': '6',
+    'الصف السابع': '7',
+    'الصف الثامن': '8',
+    'الصف التاسع': '9',
+    'الصف العاشر': '10',
+    'الصف الحادي عشر': '11',
+    'الصف الثاني عشر': '12',
+}
+
+# خريطة لتحويل أسماء المواد إلى رموز
+SUBJECT_NAME_TO_CODE = {
+    'رياضيات': 'math',
+    'لغة عربية': 'arabic',
+    'لغة إنجليزية': 'english',
+    'علوم': 'science',
+    'دراسات اجتماعية': 'social',
+    'تربية إسلامية': 'islamic',
+    'حاسوب': 'computer',
+    'تربية فنية': 'art',
+    'تربية رياضية': 'sports',
+}
+
+
+class BookRequestItemSerializer(serializers.ModelSerializer):
+    """Serializer لعنصر في الطلب"""
+    book_title = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = BookRequestItem
+        fields = [
+            'id',
+            'book',
+            'book_title',
+            'subject',
+            'grade',
+            'quantity',
+            'approved_quantity',
+            'created_at'
+        ]
+        read_only_fields = ['id', 'created_at']
+    
+    def get_book_title(self, obj):
+        if obj.book:
+            return obj.book.title
+        return f"{obj.subject} - {obj.grade}"
+
 
 class BookRequestSerializer(serializers.ModelSerializer):
-    created_by_username = serializers.CharField(source='created_by.username', read_only=True)
-    assigned_to_username = serializers.CharField(source='assigned_to.username', read_only=True)
-
+    """Serializer لطلب الكتب"""
+    items = BookRequestItemSerializer(many=True, read_only=False)
+    created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
+    reviewed_by_name = serializers.CharField(source='reviewed_by.get_full_name', read_only=True)
+    province_name = serializers.SerializerMethodField()
+    
     class Meta:
         model = BookRequest
         fields = [
-            "id",
-            "stage",
-            "subject",
-            "quantity",
-            "created_by",
-            "created_by_username",
-            "assigned_to",
-            "assigned_to_username",
-            "reason_rejected",
-            "created_at",
-            "updated_at",
+            'id',
+            'request_number',
+            'status',
+            'notes',
+            'rejection_reason',
+            'created_by',
+            'created_by_name',
+            'reviewed_by',
+            'reviewed_by_name',
+            'province_name',
+            'items',
+            'created_at',
+            'updated_at',
+            'reviewed_at',
         ]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        read_only_fields = ['id', 'request_number', 'created_at', 'updated_at', 'created_by', 'reviewed_by', 'reviewed_at']
+    
+    def get_province_name(self, obj):
+        if hasattr(obj.created_by, 'province'):
+            return obj.created_by.province
+        return None
+    
+    def create(self, validated_data):
+        items_data = validated_data.pop('items', [])
+        request = BookRequest.objects.create(**validated_data)
+        
+        for item_data in items_data:
+            # Try to find matching book
+            book = None
+            if 'book' in item_data and item_data['book']:
+                book = item_data['book']
+            else:
+                # Try to find book by subject and grade
+                # Convert grade name to number and subject name to code
+                grade_text = item_data.get('grade', '')
+                subject_text = item_data.get('subject', '')
+                
+                grade_number = GRADE_NAME_TO_NUMBER.get(grade_text, grade_text)
+                subject_code = SUBJECT_NAME_TO_CODE.get(subject_text, subject_text)
+                
+                try:
+                    book = Book.objects.get(
+                        subject=subject_code,
+                        grade_level=grade_number
+                    )
+                except Book.DoesNotExist:
+                    pass
+            
+            BookRequestItem.objects.create(
+                request=request,
+                book=book,
+                **item_data
+            )
+        
+        return request
+    
+    def update(self, instance, validated_data):
+        items_data = validated_data.pop('items', None)
+        
+        # Update request fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        
+        # Update items if provided
+        if items_data is not None:
+            # Delete existing items
+            instance.items.all().delete()
+            
+            # Create new items
+            for item_data in items_data:
+                book = None
+                if 'book' in item_data and item_data['book']:
+                    book = item_data['book']
+                else:
+                    # Convert grade name to number and subject name to code
+                    grade_text = item_data.get('grade', '')
+                    subject_text = item_data.get('subject', '')
+                    
+                    grade_number = GRADE_NAME_TO_NUMBER.get(grade_text, grade_text)
+                    subject_code = SUBJECT_NAME_TO_CODE.get(subject_text, subject_text)
+                    
+                    try:
+                        book = Book.objects.get(
+                            subject=subject_code,
+                            grade_level=grade_number
+                        )
+                    except Book.DoesNotExist:
+                        pass
+                
+                BookRequestItem.objects.create(
+                    request=instance,
+                    book=book,
+                    **item_data
+                )
+        
+        return instance
+
+
+class BookRequestApprovalSerializer(serializers.Serializer):
+    """Serializer للموافقة أو الرفض على الطلب"""
+    action = serializers.ChoiceField(choices=['approve', 'reject'])
+    rejection_reason = serializers.CharField(required=False, allow_blank=True)
+    items_approval = serializers.ListField(
+        child=serializers.DictField(),
+        required=False
+    )

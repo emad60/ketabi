@@ -344,3 +344,113 @@ class PDFReportGenerator:
         doc.build(elements)
         buffer.seek(0)
         return buffer
+    
+    @staticmethod
+    def generate_shipment_report(shipment):
+        """
+        إنشاء تقرير PDF لشحنة محددة
+        """
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4)
+        elements = []
+        
+        # Styles
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=18,
+            textColor=colors.HexColor('#1976d2'),
+            spaceAfter=30,
+            alignment=TA_CENTER
+        )
+        
+        # العنوان
+        title = Paragraph(f"Shipment Report #{shipment.id}", title_style)
+        elements.append(title)
+        elements.append(Spacer(1, 0.2*inch))
+        
+        # معلومات الشحنة
+        info_data = [
+            ['Shipment ID:', str(shipment.id)],
+            ['Tracking Code:', shipment.tracking_code],
+            ['Status:', shipment.get_status_display()],
+            ['Created Date:', shipment.created_at.strftime('%Y-%m-%d %H:%M')],
+        ]
+        
+        # معلومات المصدر والوجهة
+        if shipment.from_ministry:
+            info_data.append(['From:', f"{shipment.from_ministry.name} (Ministry)"])
+        
+        if shipment.to_province:
+            province_name = getattr(shipment.to_province, 'province', 'Unknown')
+            info_data.append(['To:', f"{shipment.to_province.name} ({province_name})"])
+        
+        if shipment.to_school_name:
+            info_data.append(['School:', shipment.to_school_name])
+        
+        # معلومات المندوب
+        if shipment.assigned_courier:
+            info_data.append(['Courier:', shipment.assigned_courier.full_name])
+        
+        if shipment.delivered_at:
+            info_data.append(['Delivered At:', shipment.delivered_at.strftime('%Y-%m-%d %H:%M')])
+        
+        info_table = Table(info_data, colWidths=[2*inch, 4*inch])
+        info_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.lightgrey),
+            ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+        elements.append(info_table)
+        elements.append(Spacer(1, 0.3*inch))
+        
+        # جدول الكتب
+        elements.append(Paragraph("Books in Shipment", styles['Heading2']))
+        elements.append(Spacer(1, 0.1*inch))
+        
+        books_data = [['#', 'Book Title', 'Grade', 'Subject', 'Term', 'Quantity']]
+        
+        for idx, book_item in enumerate(shipment.books or [], 1):
+            try:
+                book = Book.objects.get(id=book_item.get('book_id'))
+                term_display = dict(Book.TERM_CHOICES).get(book_item.get('term', 'first'), 'First Term')
+                books_data.append([
+                    str(idx),
+                    book.title[:40],
+                    book.get_grade_display(),
+                    book.get_subject_display(),
+                    term_display,
+                    str(book_item.get('quantity', 0))
+                ])
+            except Book.DoesNotExist:
+                books_data.append([
+                    str(idx),
+                    f"Book ID: {book_item.get('book_id')}",
+                    '-',
+                    '-',
+                    '-',
+                    str(book_item.get('quantity', 0))
+                ])
+        
+        books_table = Table(books_data, colWidths=[0.5*inch, 2.5*inch, 1*inch, 1*inch, 1*inch, 0.8*inch])
+        books_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1976d2')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey])
+        ]))
+        elements.append(books_table)
+        
+        # بناء PDF
+        doc.build(elements)
+        buffer.seek(0)
+        return buffer

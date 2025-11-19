@@ -26,12 +26,10 @@ export const statisticsService = {
   /**
    * إحصائيات المحافظة (Province Dashboard)
    */
-  async getProvinceStats(provinceId: number): Promise<ProvinceStatistics> {
+  async getProvinceStats(provinceId: number | string): Promise<ProvinceStatistics> {
+    // The backend gets province from authenticated user, no need to pass it
     const response = await api.get<ProvinceStatistics>(
-      ENDPOINTS.STATISTICS.PROVINCE,
-      {
-        params: { province_id: provinceId }
-      }
+      ENDPOINTS.STATISTICS.PROVINCE
     );
     return response.data;
   },

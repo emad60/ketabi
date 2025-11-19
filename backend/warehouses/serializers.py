@@ -245,11 +245,12 @@ class ShipmentSerializer(serializers.ModelSerializer):
                 except WarehouseStock.DoesNotExist:
                     stock_issues.append(f"الكتاب id={book_id} ({term}) غير موجود في مخزون المستودع المصدر")
 
+            # نخزن النتيجة في context بدلاً من attrs
             if stock_issues:
-                attrs["stock_available"] = False
-                attrs["stock_issues"] = stock_issues
+                self.context['stock_available'] = False
+                self.context['stock_issues'] = stock_issues
             else:
-                attrs["stock_available"] = True
+                self.context['stock_available'] = True
 
         return attrs
 

@@ -82,7 +82,7 @@ class ShipmentAdmin(admin.ModelAdmin):
     
     def get_assigned_courier(self, obj):
         if obj.assigned_courier:
-            return obj.assigned_courier.get_full_name() or obj.assigned_courier.username
+            return obj.assigned_courier.full_name or obj.assigned_courier.username
         return "غير مسند"
     get_assigned_courier.short_description = 'المندوب المسند'
     

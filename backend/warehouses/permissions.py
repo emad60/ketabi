@@ -15,7 +15,7 @@ class IsMinistryStaff(permissions.BasePermission):
         return (
             request.user 
             and request.user.is_authenticated 
-            and request.user.role in ['ministry_staff', 'ministry_warehouse']
+            and request.user.role in ['admin', 'ministry_staff', 'ministry_warehouse', 'ministry_admin']
         )
 
 
@@ -29,7 +29,7 @@ class IsProvinceStaff(permissions.BasePermission):
         return (
             request.user 
             and request.user.is_authenticated 
-            and request.user.role in ['province_staff', 'province_warehouse']
+            and request.user.role in ['admin', 'province_staff', 'province_warehouse', 'province_admin']
         )
 
 
@@ -43,7 +43,7 @@ class IsCourier(permissions.BasePermission):
         return (
             request.user 
             and request.user.is_authenticated 
-            and request.user.role in ['ministry_driver', 'province_driver']
+            and request.user.role in ['admin', 'ministry_driver', 'province_driver']
         )
 
 

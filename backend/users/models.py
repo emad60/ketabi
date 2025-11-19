@@ -24,6 +24,7 @@ ROLE_CHOICES = [
     ('ministry_staff', 'موظف الوزارة'),
     ('ministry_warehouse', 'موظف مخازن الوزارة'),
     ('ministry_driver', 'مندوب توصيل الوزارة'),
+    ('province_admin', 'مدير المحافظة'),
     ('province_staff', 'موظف المحافظة'),
     ('province_warehouse', 'موظف مخازن المحافظة'),
     ('province_driver', 'مندوب توصيل المحافظة'),

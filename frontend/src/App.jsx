@@ -6,11 +6,17 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useAuthStore } from './store/authStore';
-import LoginPage from './pages/LoginPage';
-import MinistryDashboard from './pages/MinistryDashboard';
-import CapitalDashboard from './components/CapitalDashboard';
-import ShipmentManagement from './components/ShipmentManagement';
-import CreateBookRequest from './components/CreateBookRequest';
+// Import new pages from pages directory
+import { LoginPage } from './pages/LoginPage';
+import { MinistryDashboard } from './pages/MinistryDashboard';
+import { ProvinceDashboard } from './pages/ProvinceDashboard';
+import { ShipmentManagement } from './components/ShipmentManagement';
+// Import Ministry Pages
+import { MinistryBooksManagementPage } from './components/MinistryBooksManagementPage';
+import { SchoolManagementPage } from './components/SchoolManagementPage';
+import { ReportsPage } from './components/ReportsPage';
+import { MinistryProvinceRequestsPage } from './components/MinistryProvinceRequestsPage';
+import { MinistryShipmentManagementPage } from './components/MinistryShipmentManagementPage';
 import './App.css';
 
 // Create React Query client
@@ -90,13 +96,53 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/ministry/books"
+            element={
+              <ProtectedRoute allowedRoles={['ministry_admin', 'ministry_staff']}>
+                <MinistryBooksManagementPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/ministry/schools"
+            element={
+              <ProtectedRoute allowedRoles={['ministry_admin', 'ministry_staff']}>
+                <SchoolManagementPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/ministry/reports"
+            element={
+              <ProtectedRoute allowedRoles={['ministry_admin', 'ministry_staff']}>
+                <ReportsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/ministry/province-requests"
+            element={
+              <ProtectedRoute allowedRoles={['ministry_admin', 'ministry_staff']}>
+                <MinistryProvinceRequestsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/ministry/shipments"
+            element={
+              <ProtectedRoute allowedRoles={['ministry_admin', 'ministry_staff']}>
+                <MinistryShipmentManagementPage />
+              </ProtectedRoute>
+            }
+          />
 
-          {/* Province Routes - أمانة العاصمة */}
+          {/* Province Routes - المحافظات */}
           <Route
             path="/province/dashboard"
             element={
               <ProtectedRoute allowedRoles={['province_admin', 'province_staff']}>
-                <CapitalDashboard />
+                <ProvinceDashboard />
               </ProtectedRoute>
             }
           />

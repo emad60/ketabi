@@ -1,9 +1,16 @@
-FROM node:20
+FROM node:20-alpine
 
 WORKDIR /app
-COPY package*.json ./
-RUN npm install
+
+# Copy package files
+COPY package.json ./
+
+# Install dependencies
+RUN npm install --legacy-peer-deps
+
+# Copy application files
 COPY . .
 
 EXPOSE 3000
-CMD ["npm", "run", "dev", "--", "--host"]
+
+CMD ["npm", "run", "dev"]

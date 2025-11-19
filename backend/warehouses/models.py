@@ -40,6 +40,9 @@ STATUS_CHOICES = [
 ]
 
 class Shipment(models.Model):
+    # Tracking code - unique identifier  
+    tracking_code = models.CharField(max_length=50, blank=True, null=True, db_index=True, help_text="كود التتبع الفريد")
+    
     # المسار 1: وزارة → محافظة
     from_ministry = models.ForeignKey(
         MinistryWarehouse,
@@ -89,6 +92,23 @@ class Shipment(models.Model):
     recipient_name = models.CharField(max_length=255, blank=True, default="", help_text="اسم المستلم")
     delivery_notes = models.TextField(blank=True, default="", help_text="ملاحظات التسليم")
     
+    # Additional mobile fields
+    driver_location = models.JSONField(null=True, blank=True, help_text="Driver location data")
+    delivery_photos = models.JSONField(default=list, blank=True, help_text="List of delivery photo paths")
+    signature_path = models.CharField(max_length=500, blank=True, help_text="Path to signature file")
+    signature_uploaded_at = models.DateTimeField(null=True, blank=True)
+    receiver_notes = models.TextField(blank=True, default="", help_text="School receiver notes")
+    delivery_condition = models.CharField(max_length=20, blank=True, default="good", help_text="good/damaged")
+    confirmed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="confirmed_shipments",
+        help_text="School staff who confirmed receipt"
+    )
+    confirmed_at = models.DateTimeField(null=True, blank=True, help_text="When school confirmed receipt")
+    
     # طوابع وقت
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -97,6 +117,13 @@ class Shipment(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+    
+    def save(self, *args, **kwargs):
+        # Generate tracking code if not exists
+        if not self.tracking_code:
+            import uuid
+            self.tracking_code = f"SHP-{uuid.uuid4().hex[:12].upper()}"
+        super().save(*args, **kwargs)
 
     def __str__(self):
         target = self.to_province.province if self.to_province else (self.to_school_name or "N/A")

@@ -239,6 +239,17 @@ class ShipmentSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, attrs):
+        # Backwards-compatibility: accept `related_request_id` in incoming payloads
+        # and map it to `related_request` FK for persisted linkage
+        if 'related_request_id' in getattr(self, 'initial_data', {}):
+            try:
+                rid = int(self.initial_data.get('related_request_id'))
+                rq = BookRequest.objects.filter(id=rid).first()
+                if rq:
+                    attrs['related_request'] = rq
+            except Exception:
+                pass
+
         # نتحقق من توفر المخزون في المستودع المصدر
         role = attrs.get("courier_role") or (self.instance.courier_role if self.instance else None)
         books = attrs.get("books", [])

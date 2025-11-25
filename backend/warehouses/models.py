@@ -115,6 +115,16 @@ class Shipment(models.Model):
     started_delivery_at = models.DateTimeField(null=True, blank=True, help_text="وقت بدء التوصيل")
     delivered_at = models.DateTimeField(null=True, blank=True, help_text="وقت التسليم الفعلي")
 
+    # Optional link back to a province book request (if shipment was created from a request)
+    related_request = models.ForeignKey(
+        'book_requests.BookRequest',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='shipments_from_request',
+        help_text='Optional link to the originating book request'
+    )
+
     class Meta:
         ordering = ["-created_at"]
     

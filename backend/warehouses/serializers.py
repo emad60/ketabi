@@ -13,6 +13,7 @@ from .models import (
     StockMovement,
 )
 from books.models import Book
+from book_requests.models import BookRequest
 from .utils import pack_qr_payload, make_qr_image_bytes, save_qr_png_for_shipment
 
 
@@ -73,6 +74,25 @@ class WarehouseStockSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "created_at", "updated_at", "book_label", "warehouse_name", "is_low_stock"]
 
+    # Make warehouse fields optional in input; require at least one to be present
+    ministry_warehouse = serializers.PrimaryKeyRelatedField(
+        queryset=MinistryWarehouse.objects.all(), required=False, allow_null=True
+    )
+    province_warehouse = serializers.PrimaryKeyRelatedField(
+        queryset=ProvinceWarehouse.objects.all(), required=False, allow_null=True
+    )
+
+    def validate(self, attrs):
+        # Ensure at least one warehouse field is set either in attrs or existing instance
+        mw = attrs.get('ministry_warehouse')
+        pw = attrs.get('province_warehouse')
+        if not mw and not pw:
+            # If updating existing instance, allow missing fields if instance already has a warehouse
+            if self.instance and (self.instance.ministry_warehouse or self.instance.province_warehouse):
+                return attrs
+            raise serializers.ValidationError('Either ministry_warehouse or province_warehouse must be provided.')
+        return attrs
+
     def get_book_label(self, obj):
         """عرض اسم الكتاب بشكل منسق"""
         return str(obj.book)
@@ -130,6 +150,7 @@ class ShipmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Shipment
         fields = [
+            "related_request",
             "id",
             "from_ministry",
             "from_ministry_name",

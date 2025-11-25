@@ -83,6 +83,16 @@ class WarehouseStockSerializer(serializers.ModelSerializer):
     )
 
     def validate(self, attrs):
+        # Backwards-compatibility: accept `related_request_id` in incoming payloads
+        # and map it to `related_request` FK
+        if 'related_request_id' in getattr(self, 'initial_data', {}):
+            try:
+                rid = int(self.initial_data.get('related_request_id'))
+                rq = BookRequest.objects.filter(id=rid).first()
+                if rq:
+                    attrs['related_request'] = rq
+            except Exception:
+                pass
         # Ensure at least one warehouse field is set either in attrs or existing instance
         mw = attrs.get('ministry_warehouse')
         pw = attrs.get('province_warehouse')

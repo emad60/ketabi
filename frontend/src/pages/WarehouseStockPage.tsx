@@ -66,12 +66,14 @@ export function WarehouseStockPage() {
   const fetchStocks = async () => {
     try {
       setLoading(true);
-      const response = await api.get(`/warehouses/warehouse-stocks/`, {
+      const response = await api.get(`/warehouses/stocks/`, {
         params: {
-          [`${warehouseType}_warehouse`]: warehouseId
+          [`${warehouseType}_warehouse`]: warehouseId,
+          page_size: 100,
         }
       });
-      setStocks(response.data);
+      const data = response.data.results || response.data;
+      setStocks(Array.isArray(data) ? data : []);
       setError('');
     } catch (err: any) {
       console.error('Error fetching stocks:', err);
@@ -83,8 +85,9 @@ export function WarehouseStockPage() {
 
   const fetchBooks = async () => {
     try {
-      const response = await api.get('/books/books/');
-      setBooks(response.data);
+      const response = await api.get('/books/');
+      const data = response.data.results || response.data;
+      setBooks(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Error fetching books:', err);
     }
@@ -95,18 +98,23 @@ export function WarehouseStockPage() {
     try {
       setLoading(true);
       
-      const payload = {
+      const payload: any = {
         [`${warehouseType}_warehouse`]: parseInt(warehouseId!),
         book: parseInt(formData.book_id),
         term: formData.term,
         quantity: formData.quantity,
-        min_threshold: formData.min_threshold
+        min_threshold: formData.min_threshold,
       };
 
+      // Include complementary warehouse field as null to satisfy backend serializer
+      const warehouseKey = `${warehouseType}_warehouse`;
+      const complementaryKey = warehouseKey === 'ministry_warehouse' ? 'province_warehouse' : 'ministry_warehouse';
+      payload[complementaryKey] = null;
+
       if (editingStock) {
-        await api.put(`/warehouses/warehouse-stocks/${editingStock.id}/`, payload);
+        await api.put(`/warehouses/stocks/${editingStock.id}/`, payload);
       } else {
-        await api.post('/warehouses/warehouse-stocks/', payload);
+        await api.post('/warehouses/stocks/', payload);
       }
       
       setShowAddForm(false);
@@ -124,7 +132,7 @@ export function WarehouseStockPage() {
   const handleEdit = (stock: StockItem) => {
     setEditingStock(stock);
     setFormData({
-      book_id: stock.book.id.toString(),
+      book_id: String((stock as any).book),
       term: stock.term,
       quantity: stock.quantity,
       min_threshold: stock.min_threshold
@@ -137,7 +145,7 @@ export function WarehouseStockPage() {
       const stock = stocks.find(s => s.id === stockId);
       if (!stock) return;
 
-      await api.patch(`/warehouses/warehouse-stocks/${stockId}/`, {
+      await api.patch(`/warehouses/stocks/${stockId}/`, {
         quantity: stock.quantity + adjustment
       });
       
@@ -149,8 +157,7 @@ export function WarehouseStockPage() {
   };
 
   const filteredStocks = stocks.filter(s => 
-    s.book.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    s.book.subject_display.toLowerCase().includes(searchTerm.toLowerCase())
+    (String((s as any).book_label || (s as any).book || '')).toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const lowStockItems = stocks.filter(s => s.quantity <= s.min_threshold);
@@ -368,7 +375,7 @@ export function WarehouseStockPage() {
                       <BookOpen className="w-6 h-6 text-blue-600" />
                     </div>
                     <div className="flex-1">
-                      <h3 className="font-semibold text-gray-900">{stock.book.title}</h3>
+                      <h3 className="font-semibold text-gray-900">{(stock as any).book_label || `كتاب #${stock.book}`}</h3>
                       <p className="text-sm text-gray-600">
                         {stock.term === 'first' ? 'الفصل الأول' : 'الفصل الثاني'}
                       </p>

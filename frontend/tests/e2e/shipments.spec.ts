@@ -112,13 +112,13 @@ test('create request → approve → create shipment → open shipment details �
   // 9) Visit the app as province user and verify the shipment appears
   // Set tokens in localStorage so the frontend's axios uses them
   await page.goto(APP_BASE, { waitUntil: 'domcontentloaded' });
-  await page.evaluate((token, authKey) => {
+  await page.evaluate(({ token, authKey }) => {
     localStorage.setItem('access_token', token);
     // Persist minimal auth-store state so ProtectedRoute sees isAuthenticated=true
     try {
-      localStorage.setItem('auth-storage', JSON.stringify({ user: null, token: token, refreshToken: null, isAuthenticated: true }));
+      localStorage.setItem(authKey, JSON.stringify({ user: null, token: token, refreshToken: null, isAuthenticated: true }));
     } catch (e) {}
-  }, provinceToken, 'auth-storage');
+  }, { token: provinceToken, authKey: 'auth-storage' });
 
   // Navigate to province incoming shipments
   await page.goto(`${APP_BASE}/province/incoming-shipments`);

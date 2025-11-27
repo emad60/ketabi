@@ -193,8 +193,8 @@ export function MinistryBooksManagementPage() {
   };
 
   const filteredBooks = books.filter(book => {
-    const matchesSearch = book.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         book.subject.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = (book.title || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (book.subject || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesGrade = filterGrade === 'all' || book.grade === filterGrade;
     const matchesSubject = filterSubject === 'all' || book.subject === filterSubject;
     return matchesSearch && matchesGrade && matchesSubject;

@@ -4,8 +4,10 @@ import { useAuthStore } from '../store/authStore';
 import { statisticsService } from '../services/statisticsService';
 import { MinistryWarehouseManagementPage } from '../components/MinistryWarehouseManagementPage';
 import { MinistryShipmentManagementPage } from '../components/MinistryShipmentManagementPage';
+import { MinistryProvinceRequestsPageV2 } from '../components/MinistryProvinceRequestsPageV2';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
+import { Badge } from '../components/ui/badge';
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { 
   Building2, 
@@ -20,7 +22,8 @@ import {
   Warehouse,
   Home,
   FileText,
-  BarChart3
+  BarChart3,
+  CheckCircle
 } from 'lucide-react';
 
 interface Stats {
@@ -51,6 +54,24 @@ interface Stats {
     active_couriers: number;
   };
   school_requests: {
+    total: number;
+    by_status: {
+      pending: number;
+      approved: number;
+      rejected: number;
+      fulfilled: number;
+    };
+  };
+  school_requests: {
+    total: number;
+    by_status: {
+      pending: number;
+      approved: number;
+      rejected: number;
+      fulfilled: number;
+    };
+  };
+  province_requests?: {
     total: number;
     by_status: {
       pending: number;
@@ -189,64 +210,87 @@ export function MinistryDashboard() {
             <div className="mb-8">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">الإجراءات السريعة</h2>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                {/* إدارة مخازن الوزارة */}
                 <Button 
                   variant="outline" 
                   className="h-auto py-4 justify-start"
                   onClick={() => setActiveTab('warehouses')}
                 >
-                  <Building2 className="ml-2 w-5 h-5" />
-                  إدارة المخازن
+                  <Warehouse className="ml-2 w-5 h-5" />
+                  مخازن الوزارة
                 </Button>
-            <Button 
-              variant="outline" 
-              className="h-auto py-4 justify-start"
-              onClick={() => navigate('/ministry/shipments')}
-            >
-              <TruckIcon className="ml-2 w-5 h-5" />
-              إدارة الشحنات
-            </Button>
-            <Button 
-              variant="outline" 
-              className="h-auto py-4 justify-start"
-              onClick={() => navigate('/ministry/books')}
-            >
-              <BookOpen className="ml-2 w-5 h-5" />
-              إدارة الكتب
-            </Button>
-            <Button 
-              variant="outline" 
-              className="h-auto py-4 justify-start"
-              onClick={() => navigate('/ministry/users')}
-            >
-              <Users className="ml-2 w-5 h-5" />
-              إدارة المستخدمين
-            </Button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-            <Button 
-              variant="outline" 
-              className="h-auto py-4 justify-start"
-              onClick={() => navigate('/ministry/province-requests')}
-            >
-              <FileText className="ml-2 w-5 h-5" />
-              طلبات المحافظات
-            </Button>
-            <Button 
-              variant="outline" 
-              className="h-auto py-4 justify-start"
-              onClick={() => navigate('/ministry/schools')}
-            >
-              <School className="ml-2 w-5 h-5" />
-              إدارة المدارس
-            </Button>
-            <Button 
-              variant="outline" 
-              className="h-auto py-4 justify-start"
-              onClick={() => navigate('/ministry/reports')}
-            >
-              <BarChart3 className="ml-2 w-5 h-5" />
-              التقارير والإحصائيات
-            </Button>
+                
+                {/* إدخال الكتب للمخازن */}
+                <Button 
+                  variant="outline" 
+                  className="h-auto py-4 justify-start"
+                  onClick={() => navigate('/ministry/stock-entry')}
+                >
+                  <Package className="ml-2 w-5 h-5" />
+                  إدخال الكتب
+                </Button>
+                
+                {/* طلبات المحافظات */}
+                <Button 
+                  variant="outline" 
+                  className="h-auto py-4 justify-start"
+                  onClick={() => navigate('/ministry/province-requests')}
+                >
+                  <FileText className="ml-2 w-5 h-5" />
+                  طلبات المحافظات
+                </Button>
+                
+                {/* إنشاء شحنة للمحافظات */}
+                <Button 
+                  variant="outline" 
+                  className="h-auto py-4 justify-start"
+                  onClick={() => setActiveTab('shipments')}
+                >
+                  <TruckIcon className="ml-2 w-5 h-5" />
+                  إنشاء شحنة
+                </Button>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
+                {/* إدارة المحافظات */}
+                <Button 
+                  variant="outline" 
+                  className="h-auto py-4 justify-start"
+                  onClick={() => navigate('/ministry/provinces')}
+                >
+                  <Building2 className="ml-2 w-5 h-5" />
+                  إدارة المحافظات
+                </Button>
+                
+                {/* الشحنات الصادرة */}
+                <Button 
+                  variant="outline" 
+                  className="h-auto py-4 justify-start"
+                  onClick={() => navigate('/ministry/outgoing-shipments')}
+                >
+                  <TruckIcon className="ml-2 w-5 h-5" />
+                  شحنات صادرة
+                </Button>
+                
+                {/* الشحنات الواردة */}
+                <Button 
+                  variant="outline" 
+                  className="h-auto py-4 justify-start"
+                  onClick={() => navigate('/ministry/incoming-shipments')}
+                >
+                  <Package className="ml-2 w-5 h-5" />
+                  شحنات واردة
+                </Button>
+                
+                {/* مناديب التوصيل */}
+                <Button 
+                  variant="outline" 
+                  className="h-auto py-4 justify-start"
+                  onClick={() => navigate('/ministry/couriers')}
+                >
+                  <Users className="ml-2 w-5 h-5" />
+                  مناديب التوصيل
+                </Button>
           </div>
         </div>
 
@@ -392,7 +436,100 @@ export function MinistryDashboard() {
                 <p className="text-xs text-gray-600 mt-1">طلب مدرسة</p>
               </CardContent>
             </Card>
+
+            {/* طلبات المحافظات */}
+            <Card 
+              className="hover:shadow-lg transition-shadow cursor-pointer"
+              onClick={() => navigate('/ministry/province-requests')}
+            >
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-gray-600">
+                  طلبات المحافظات
+                </CardTitle>
+                <FileText className="w-8 h-8 text-cyan-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold text-gray-900">
+                  {stats?.province_requests?.total || 0}
+                </div>
+                <div className="flex gap-2 mt-2 text-xs">
+                  <span className="text-yellow-600">
+                    ⏳ {stats?.province_requests?.by_status?.pending || 0} معلق
+                  </span>
+                  <span className="text-green-600">
+                    ✅ {stats?.province_requests?.by_status?.approved || 0} موافق
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
           </div>
+        </div>
+
+        {/* Detailed Statistics */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          {/* Shipments by Status */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <TruckIcon className="w-5 h-5" />
+                الشحنات حسب الحالة
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">⏳ معلقة</span>
+                  <Badge variant="secondary">{stats?.shipments.by_status.pending || 0}</Badge>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">📋 مكلفة</span>
+                  <Badge className="bg-blue-100 text-blue-800">{stats?.shipments.by_status.assigned || 0}</Badge>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">🚚 جاري التوصيل</span>
+                  <Badge className="bg-purple-100 text-purple-800">{stats?.shipments.by_status.out_for_delivery || 0}</Badge>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">📦 تم التسليم</span>
+                  <Badge className="bg-green-100 text-green-800">{stats?.shipments.by_status.delivered || 0}</Badge>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">✅ مؤكدة</span>
+                  <Badge className="bg-green-600 text-white">{stats?.shipments.by_status.confirmed || 0}</Badge>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Province Requests Status */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="w-5 h-5" />
+                طلبات المحافظات
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">⏳ معلقة</span>
+                  <Badge className="bg-yellow-100 text-yellow-800">{stats?.province_requests?.by_status?.pending || 0}</Badge>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">✅ موافق عليها</span>
+                  <Badge className="bg-green-100 text-green-800">{stats?.province_requests?.by_status?.approved || 0}</Badge>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">❌ مرفوضة</span>
+                  <Badge className="bg-red-100 text-red-800">{stats?.province_requests?.by_status?.rejected || 0}</Badge>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">📦 مكتملة</span>
+                  <Badge className="bg-blue-100 text-blue-800">{stats?.province_requests?.by_status?.fulfilled || 0}</Badge>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Recent Activity */}
@@ -402,8 +539,34 @@ export function MinistryDashboard() {
             <CardDescription>آخر العمليات في النظام</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-center py-8 text-gray-500">
-              <p>قريباً: عرض آخر العمليات والتحديثات</p>
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                <Package className="w-5 h-5 text-blue-600" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium">آخر 30 يوم</p>
+                  <p className="text-xs text-gray-600">
+                    {stats?.shipments.last_30_days || 0} شحنة جديدة
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                <CheckCircle className="w-5 h-5 text-green-600" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium">شحنات مكتملة</p>
+                  <p className="text-xs text-gray-600">
+                    {stats?.shipments.completed_last_30_days || 0} في آخر 30 يوم
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                <Users className="w-5 h-5 text-purple-600" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium">المناديب النشطون</p>
+                  <p className="text-xs text-gray-600">
+                    {stats?.couriers.active_couriers || 0} من {stats?.couriers.total_ministry_couriers || 0}
+                  </p>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Auto Login (dev)</title>
+  <style>body{font-family:system-ui,Arial;padding:24px;background:#f8fafc;color:#0f172a}</style>
+</head>
+<body>
+  <h2>Auto Login (development)</h2>
+  <p>This page will perform a test login (province_admin) and store tokens in <code>localStorage</code>.</p>
+  <p>If your backend is running at <code>/api</code> on the same host, click the button below.</p>
+  <button id="btn">Login as province_admin</button>
+  <pre id="out"></pre>
+
+  <script>
+    const out = document.getElementById('out');
+    const btn = document.getElementById('btn');
+
+    btn.addEventListener('click', async () => {
+      out.textContent = 'Logging in...';
+      try {
+        const resp = await fetch('/api/users/login/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: 'province_admin', password: 'test123' })
+        });
+
+        if (!resp.ok) {
+          const text = await resp.text();
+          out.textContent = 'Login failed: ' + resp.status + '\n' + text;
+          return;
+        }
+
+        const data = await resp.json();
+        // Save tokens and user as frontend expects
+        localStorage.setItem('access_token', data.access || data.access_token || data.token || '');
+        localStorage.setItem('refresh_token', data.refresh || '');
+        localStorage.setItem('user', JSON.stringify(data.user || {}));
+
+        out.textContent = 'Stored access token (prefix): ' + (localStorage.getItem('access_token')||'') .substring(0,20) + '...';
+
+        // redirect to province dashboard
+        setTimeout(() => {
+          window.location.href = '/province/dashboard';
+        }, 800);
+      } catch (err) {
+        out.textContent = 'Error: ' + err;
+      }
+    });
+  </script>
+</body>
+</html>

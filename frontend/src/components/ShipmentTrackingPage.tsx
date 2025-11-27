@@ -232,11 +232,12 @@ export function ShipmentTrackingPage() {
   };
 
   const filteredShipments = shipments.filter(shipment => {
+    const q = searchTerm.toLowerCase();
     const matchesSearch = 
-      shipment.tracking_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      shipment.from_warehouse.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      shipment.to_warehouse.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (shipment.courier_name && shipment.courier_name.toLowerCase().includes(searchTerm.toLowerCase()));
+      (shipment.tracking_number || '').toLowerCase().includes(q) ||
+      (shipment.from_warehouse || '').toLowerCase().includes(q) ||
+      (shipment.to_warehouse || '').toLowerCase().includes(q) ||
+      ((shipment.courier_name || '').toLowerCase().includes(q));
     
     const matchesStatus = filterStatus === 'all' || shipment.status === filterStatus;
     

@@ -203,8 +203,8 @@ export function SchoolManagementPage() {
   };
 
   const filteredSchools = schools.filter(school => {
-    const matchesSearch = school.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         school.district.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = (school.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (school.district || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesProvince = filterProvince === 'all' || school.province === filterProvince;
     const matchesType = filterType === 'all' || school.type === filterType;
     return matchesSearch && matchesProvince && matchesType;

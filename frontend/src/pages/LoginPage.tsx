@@ -26,33 +26,40 @@ export function LoginPage() {
     try {
       const response = await authService.login({ username, password });
       
+      console.log('Login response:', response);
+      
       // حفظ بيانات المستخدم في Store
       setAuth(response.user, response.access, response.refresh);
       
-      // توجيه المستخدم حسب نوع الدور
-      switch (response.user.role) {
-        case 'ministry_admin':
-        case 'ministry_staff':
-        case 'ministry_warehouse':
-          navigate('/ministry/dashboard');
-          break;
-        case 'province_admin':
-        case 'province_staff':
-        case 'province_warehouse':
-          navigate('/province/dashboard');
-          break;
-        case 'warehouse_manager':
-          navigate('/warehouse/dashboard');
-          break;
-        case 'driver':
-          navigate('/driver/dashboard');
-          break;
-        case 'school_staff':
-          navigate('/school/dashboard');
-          break;
-        default:
-          navigate('/dashboard');
-      }
+      console.log('Auth set, navigating to dashboard...');
+      
+      // استخدام setTimeout لتجنب مشاكل التوجيه الفوري
+      setTimeout(() => {
+        // توجيه المستخدم حسب نوع الدور
+        switch (response.user.role) {
+          case 'ministry_admin':
+          case 'ministry_staff':
+          case 'ministry_warehouse':
+            navigate('/ministry/dashboard', { replace: true });
+            break;
+          case 'province_admin':
+          case 'province_staff':
+          case 'province_warehouse':
+            navigate('/province/dashboard', { replace: true });
+            break;
+          case 'warehouse_manager':
+            navigate('/warehouse/dashboard', { replace: true });
+            break;
+          case 'driver':
+            navigate('/driver/dashboard', { replace: true });
+            break;
+          case 'school_staff':
+            navigate('/school/dashboard', { replace: true });
+            break;
+          default:
+            navigate('/dashboard', { replace: true });
+        }
+      }, 100);
     } catch (err: any) {
       console.error('Login error:', err);
       const errorMsg = err.response?.data?.message || err.response?.data?.detail || 'حدث خطأ أثناء تسجيل الدخول';

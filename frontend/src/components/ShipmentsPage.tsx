@@ -29,6 +29,7 @@ import {
   CheckCircle
 } from 'lucide-react';
 import api from '../services/api';
+import { Link } from 'react-router-dom';
 import { ReceiveShipmentDialog } from './ReceiveShipmentDialog';
 
 interface Shipment {
@@ -386,7 +387,16 @@ export function ShipmentsPage({ direction, userType }: ShipmentsPageProps) {
                 <div>
                   <Label className="text-sm text-gray-600">الطلب المرتبط</Label>
                   <p className="text-sm bg-gray-50 p-3 rounded mt-1">
-                    {relatedRequest.request_number || `#${relatedRequest.id}`} - {relatedRequest.get_status_display?.toString?.() || relatedRequest.status}
+                    <Link
+                      to={
+                        userType === 'ministry'
+                          ? `/ministry/province-requests?id=${relatedRequest.id}`
+                          : `/province/book-requests?id=${relatedRequest.id}`
+                      }
+                      className="text-blue-600 hover:underline"
+                    >
+                      {relatedRequest.request_number || `#${relatedRequest.id}`} - {relatedRequest.get_status_display?.toString?.() || relatedRequest.status}
+                    </Link>
                   </p>
                 </div>
               )}

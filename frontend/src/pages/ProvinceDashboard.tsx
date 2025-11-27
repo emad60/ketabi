@@ -24,6 +24,7 @@ import { ProvinceRequestManagementPage } from '../components/ProvinceRequestMana
 import { ProvinceCourierManagementPage } from '../components/ProvinceCourierManagementPage';
 import { ProvinceShipmentManagementPage } from '../components/ProvinceShipmentManagementPage';
 import { ProvinceReceiveShipmentsPage } from '../components/ProvinceReceiveShipmentsPage';
+import { ProvinceSchoolRequestsPage } from '../components/ProvinceSchoolRequestsPage';
 
 interface ProvinceStats {
   province_info: {
@@ -180,6 +181,18 @@ export function ProvinceDashboard() {
                 طلبات المدارس
               </button>
               <button
+                onClick={() => setActiveTab('school-requests')}
+                className={`
+                  py-4 px-1 border-b-2 font-medium text-sm transition-colors
+                  ${activeTab === 'school-requests'
+                    ? 'border-purple-600 text-purple-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }
+                `}
+              >
+                طلبات المدارس (جديد)
+              </button>
+              <button
                 onClick={() => setActiveTab('couriers')}
                 className={`
                   py-4 px-1 border-b-2 font-medium text-sm transition-colors
@@ -248,26 +261,49 @@ export function ProvinceDashboard() {
             <div className="mb-8">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">الإجراءات السريعة</h2>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                {/* مخازن المحافظة */}
                 <Button 
                   variant="outline" 
                   className="h-auto py-4 justify-start"
-                  onClick={() => {
-                    if (stats?.province_info?.warehouses?.[0]?.id) {
-                      navigate(`/province/warehouse/${stats.province_info.warehouses[0].id}/stock`);
-                    }
-                  }}
+                  onClick={() => setActiveTab('warehouses')}
                 >
                   <Building2 className="ml-2 w-5 h-5" />
-                  إدارة المخزون
+                  مخازن المحافظة
                 </Button>
+                
+                {/* إدخال الكتب */}
                 <Button 
                   variant="outline" 
                   className="h-auto py-4 justify-start"
-                  onClick={() => navigate('/province/shipments')}
+                  onClick={() => navigate('/province/stock-entry')}
+                >
+                  <Package className="ml-2 w-5 h-5" />
+                  إدخال الكتب
+                </Button>
+                
+                {/* طلبات المدارس */}
+                <Button 
+                  variant="outline" 
+                  className="h-auto py-4 justify-start"
+                  onClick={() => setActiveTab('school-requests')}
+                >
+                  <FileText className="ml-2 w-5 h-5" />
+                  طلبات المدارس
+                </Button>
+                
+                {/* إنشاء شحنة للمدارس */}
+                <Button 
+                  variant="outline" 
+                  className="h-auto py-4 justify-start"
+                  onClick={() => setActiveTab('shipments')}
                 >
                   <TruckIcon className="ml-2 w-5 h-5" />
-                  الشحنات الواردة
+                  إنشاء شحنة
                 </Button>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
+                {/* إدارة المدارس */}
                 <Button 
                   variant="outline" 
                   className="h-auto py-4 justify-start"
@@ -276,39 +312,35 @@ export function ProvinceDashboard() {
                   <School className="ml-2 w-5 h-5" />
                   إدارة المدارس
                 </Button>
+                
+                {/* شحنات صادرة */}
                 <Button 
                   variant="outline" 
                   className="h-auto py-4 justify-start"
-                  onClick={() => navigate('/province/book-requests')}
-                >
-                  <FileText className="ml-2 w-5 h-5" />
-                  طلب كتب من الوزارة
-                </Button>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                <Button 
-                  variant="outline" 
-                  className="h-auto py-4 justify-start"
-                  onClick={() => navigate('/shipments/tracking')}
+                  onClick={() => navigate('/province/outgoing-shipments')}
                 >
                   <TruckIcon className="ml-2 w-5 h-5" />
-                  تتبع الشحنات
+                  شحنات صادرة
                 </Button>
+                
+                {/* شحنات واردة */}
                 <Button 
                   variant="outline" 
                   className="h-auto py-4 justify-start"
-                  onClick={() => navigate('/province/reports')}
-                >
-                  <BarChart3 className="ml-2 w-5 h-5" />
-                  التقارير والإحصائيات
-                </Button>
-                <Button 
-                  variant="outline" 
-                  className="h-auto py-4 justify-start"
-                  onClick={() => navigate('/province/reports')}
+                  onClick={() => navigate('/province/incoming-shipments')}
                 >
                   <Package className="ml-2 w-5 h-5" />
-                  التقارير
+                  شحنات واردة
+                </Button>
+                
+                {/* مناديب التوصيل */}
+                <Button 
+                  variant="outline" 
+                  className="h-auto py-4 justify-start"
+                  onClick={() => navigate('/province/couriers')}
+                >
+                  <Users className="ml-2 w-5 h-5" />
+                  مناديب التوصيل
                 </Button>
               </div>
             </div>
@@ -481,6 +513,11 @@ export function ProvinceDashboard() {
         {/* Requests Tab */}
         {activeTab === 'requests' && (
           <ProvinceRequestManagementPage />
+        )}
+
+        {/* School Requests Tab (NEW) */}
+        {activeTab === 'school-requests' && (
+          <ProvinceSchoolRequestsPage />
         )}
 
         {/* Couriers Tab */}

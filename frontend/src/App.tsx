@@ -10,10 +10,14 @@ import { ShipmentsPage } from './pages/ShipmentsPage';
 import { MinistryShipmentManagementPage } from './components/MinistryShipmentManagementPage';
 import { ProvinceBookRequestPage } from './components/ProvinceBookRequestPage';
 import { MinistryProvinceRequestsPage } from './components/MinistryProvinceRequestsPage';
+import { MinistryProvinceRequestsPageV2 } from './components/MinistryProvinceRequestsPageV2';
 import { MinistryBooksManagementPage } from './components/MinistryBooksManagementPage';
 import { SchoolManagementPage } from './components/SchoolManagementPage';
 import { ShipmentTrackingPage } from './components/ShipmentTrackingPage';
 import { ReportsPage } from './components/ReportsPage';
+import { StockEntryPage } from './components/StockEntryPage';
+import { ShipmentsPage as ShipmentsListPage } from './components/ShipmentsPage';
+import { CouriersManagementPage } from './components/CouriersManagementPage';
 import './App.css';
 
 /**
@@ -52,15 +56,22 @@ function ProtectedRoute({
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, user } = useAuthStore();
 
-  if (isAuthenticated && user) {
+  // فقط نتحقق من isAuthenticated بدون التحقق من user لتجنب الحلقة
+  if (isAuthenticated) {
+    // إذا لم يكن هناك user، ننتظر قليلاً قبل إعادة التوجيه
+    if (!user) {
+      return <>{children}</>;
+    }
+    
     // توجيه حسب الدور
-    if (user.role === 'ministry_admin' || user.role === 'ministry_staff') {
+    const role = user.role;
+    if (role === 'ministry_admin' || role === 'ministry_staff' || role === 'ministry_warehouse') {
       return <Navigate to="/ministry/dashboard" replace />;
-    } else if (user.role === 'province_admin' || user.role === 'province_staff') {
+    } else if (role === 'province_admin' || role === 'province_staff' || role === 'province_warehouse') {
       return <Navigate to="/province/dashboard" replace />;
-    } else if (user.role === 'warehouse_manager' || user.role === 'ministry_warehouse' || user.role === 'province_warehouse') {
-      return <Navigate to="/ministry/dashboard" replace />;
-    } else if (user.role === 'driver' || user.role === 'ministry_driver' || user.role === 'province_driver') {
+    } else if (role === 'warehouse_manager') {
+      return <Navigate to="/warehouse/dashboard" replace />;
+    } else if (role === 'driver' || role === 'ministry_driver' || role === 'province_driver') {
       return <Navigate to="/ministry/dashboard" replace />;
     }
     // Default: redirect to ministry dashboard
@@ -127,10 +138,50 @@ export default function App() {
         }
       />
       <Route
+        path="/ministry/stock-entry"
+        element={
+          <ProtectedRoute allowedRoles={['ministry_admin', 'ministry_staff']}>
+            <StockEntryPage warehouseType="ministry" />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/ministry/outgoing-shipments"
+        element={
+          <ProtectedRoute allowedRoles={['ministry_admin', 'ministry_staff']}>
+            <ShipmentsListPage direction="outgoing" userType="ministry" />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/ministry/incoming-shipments"
+        element={
+          <ProtectedRoute allowedRoles={['ministry_admin', 'ministry_staff']}>
+            <ShipmentsListPage direction="incoming" userType="ministry" />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/ministry/provinces"
+        element={
+          <ProtectedRoute allowedRoles={['ministry_admin', 'ministry_staff']}>
+            <div className="p-8 text-center">قريباً: إدارة المحافظات</div>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/ministry/couriers"
+        element={
+          <ProtectedRoute allowedRoles={['ministry_admin', 'ministry_staff']}>
+            <CouriersManagementPage courierType="ministry" />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/ministry/province-requests"
         element={
           <ProtectedRoute allowedRoles={['ministry_admin', 'ministry_staff']}>
-            <MinistryProvinceRequestsPage />
+            <MinistryProvinceRequestsPageV2 />
           </ProtectedRoute>
         }
       />
@@ -181,6 +232,38 @@ export default function App() {
         element={
           <ProtectedRoute allowedRoles={['province_admin', 'province_staff']}>
             <ProvinceBookRequestPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/province/stock-entry"
+        element={
+          <ProtectedRoute allowedRoles={['province_admin', 'province_staff']}>
+            <StockEntryPage warehouseType="province" />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/province/outgoing-shipments"
+        element={
+          <ProtectedRoute allowedRoles={['province_admin', 'province_staff']}>
+            <ShipmentsListPage direction="outgoing" userType="province" />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/province/incoming-shipments"
+        element={
+          <ProtectedRoute allowedRoles={['province_admin', 'province_staff']}>
+            <ShipmentsListPage direction="incoming" userType="province" />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/province/couriers"
+        element={
+          <ProtectedRoute allowedRoles={['province_admin', 'province_staff']}>
+            <CouriersManagementPage courierType="province" />
           </ProtectedRoute>
         }
       />

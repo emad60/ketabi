@@ -151,11 +151,13 @@ export interface ShipmentBook {
 }
 
 export interface CreateShipmentData {
-  source_warehouse: number;
-  destination_warehouse: number;
-  driver: number;
+  // Backend expects fields like `from_ministry`, `to_province` or `to_school_name`, `courier_role` and `books`.
+  from_ministry?: number;
+  to_province?: number;
+  to_school_name?: string;
+  courier_role: string;
   books: ShipmentBook[];
-  expected_delivery_date: string;
+  expected_delivery_date?: string;
   notes?: string;
 }
 

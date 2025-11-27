@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Input } from './ui/input';
@@ -98,6 +99,9 @@ export function ProvinceBookRequestPage() {
   const [requests, setRequests] = useState<BookRequest[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [requestItems, setRequestItems] = useState<RequestItem[]>([]);
+  const [searchParams] = useSearchParams();
+  const [selectedRequest, setSelectedRequest] = useState<BookRequest | null>(null);
+  const [showDetails, setShowDetails] = useState(false);
   
   // حقول منفصلة
   const [selectedSubject, setSelectedSubject] = useState<string>('');
@@ -108,6 +112,19 @@ export function ProvinceBookRequestPage() {
 
   useEffect(() => {
     fetchData();
+    // If an id query param is present, try to fetch and open that request's details
+    const paramId = searchParams.get('id');
+    if (paramId) {
+      (async () => {
+        try {
+          const resp = await api.get(`/book-requests/province/${paramId}/`);
+          setSelectedRequest(resp.data);
+          setShowDetails(true);
+        } catch (err) {
+          console.error('Failed to load province request from query param:', err);
+        }
+      })();
+    }
   }, []);
 
   const fetchData = async () => {
@@ -484,6 +501,21 @@ export function ProvinceBookRequestPage() {
                     <TableCell className="text-sm text-gray-600">
                       {request.notes || '-'}
                     </TableCell>
+                    <TableCell>
+                      <Button size="sm" variant="outline" onClick={async () => {
+                        try {
+                          const resp = await api.get(`/book-requests/province/${request.id}/`);
+                          setSelectedRequest(resp.data);
+                          setShowDetails(true);
+                        } catch (err) {
+                          console.error('Failed to fetch request details:', err);
+                          alert('فشل جلب تفاصيل الطلب');
+                        }
+                      }}>
+                        <Eye className="w-4 h-4 ml-1" />
+                        عرض
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -491,6 +523,70 @@ export function ProvinceBookRequestPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Details Dialog (for province request) */}
+      {selectedRequest && (
+        <Dialog open={showDetails} onOpenChange={setShowDetails}>
+          <DialogContent className="max-w-4xl" dir="rtl">
+            <DialogHeader>
+              <DialogTitle>تفاصيل الطلب {selectedRequest.request_number}</DialogTitle>
+              <DialogDescription>
+                معلومات كاملة عن طلب المحافظة
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg">
+                <div>
+                  <span className="text-sm text-gray-600">المحافظة:</span>
+                  <p className="font-medium">{selectedRequest.items && selectedRequest.items.length > 0 ? (selectedRequest.items[0].book_title || '-') : '-'}</p>
+                </div>
+                <div>
+                  <span className="text-sm text-gray-600">التاريخ:</span>
+                  <p className="font-medium">{new Date(selectedRequest.created_at).toLocaleString('ar-YE')}</p>
+                </div>
+                <div>
+                  <span className="text-sm text-gray-600">الحالة:</span>
+                  <p>{getStatusBadge(selectedRequest.status)}</p>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="font-bold mb-2">الكتب المطلوبة</h3>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-right">المادة</TableHead>
+                      <TableHead className="text-right">الصف</TableHead>
+                      <TableHead className="text-right">الكمية المطلوبة</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(selectedRequest.items || []).map((item) => (
+                      <TableRow key={item.id}>
+                        <TableCell>{item.subject}</TableCell>
+                        <TableCell>{item.grade}</TableCell>
+                        <TableCell><Badge>{item.quantity}</Badge></TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {selectedRequest.notes && (
+                <div className="bg-blue-50 p-3 rounded-lg">
+                  <p className="text-sm font-medium text-blue-900">ملاحظات:</p>
+                  <p className="text-sm text-blue-800">{selectedRequest.notes}</p>
+                </div>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowDetails(false)}>إغلاق</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

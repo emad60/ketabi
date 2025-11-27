@@ -69,7 +69,7 @@ export function AssignCourierDialog({
       }
       
       // Fetch available couriers
-      const response = await api.get('/users/users/', {
+      const response = await api.get('/users/', {
         params: {
           role: courierRole
         }

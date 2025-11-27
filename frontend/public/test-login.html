@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Login</title>
+    <style>
+        body { font-family: Arial; padding: 20px; }
+        button { padding: 10px 20px; margin: 10px 0; }
+        pre { background: #f5f5f5; padding: 10px; overflow: auto; }
+        .error { color: red; }
+        .success { color: green; }
+    </style>
+</head>
+<body>
+    <h1>اختبار تسجيل الدخول</h1>
+    
+    <div>
+        <label>اسم المستخدم:</label>
+        <input type="text" id="username" value="province_admin">
+    </div>
+    
+    <div>
+        <label>كلمة المرور:</label>
+        <input type="password" id="password" value="test123">
+    </div>
+    
+    <button onclick="testLogin()">تسجيل الدخول</button>
+    
+    <h3>النتيجة:</h3>
+    <pre id="result"></pre>
+    
+    <script>
+        async function testLogin() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const resultEl = document.getElementById('result');
+            
+            resultEl.textContent = 'جاري المحاولة...';
+            
+            try {
+                // Test 1: Direct fetch
+                console.log('Testing login with:', { username, password });
+                
+                const response = await fetch('http://localhost:8000/api/users/login/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+                
+                console.log('Response status:', response.status);
+                console.log('Response headers:', response.headers);
+                
+                const text = await response.text();
+                console.log('Response text:', text);
+                
+                if (response.ok) {
+                    const data = JSON.parse(text);
+                    resultEl.className = 'success';
+                    resultEl.textContent = 'نجح! ✅\n\n' + JSON.stringify(data, null, 2);
+                    
+                    // Save to localStorage
+                    localStorage.setItem('access_token', data.access);
+                    localStorage.setItem('refresh_token', data.refresh);
+                    localStorage.setItem('user', JSON.stringify(data.user));
+                    
+                    console.log('Saved to localStorage');
+                } else {
+                    resultEl.className = 'error';
+                    resultEl.textContent = 'فشل! ❌\n\nStatus: ' + response.status + '\n\n' + text;
+                }
+            } catch (error) {
+                resultEl.className = 'error';
+                resultEl.textContent = 'خطأ! ❌\n\n' + error.message + '\n\n' + error.stack;
+                console.error('Error:', error);
+            }
+        }
+    </script>
+</body>
+</html>

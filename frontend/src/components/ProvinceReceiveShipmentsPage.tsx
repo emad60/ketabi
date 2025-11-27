@@ -76,14 +76,25 @@ export function ProvinceReceiveShipmentsPage() {
       setLoading(true);
       
       // Get shipments for this province
-      const response = await api.get('/warehouses/shipments/', {
-        params: {
-          status: 'delivered,out_for_delivery',
-          to_province: user?.province
-        }
-      });
-      
-      const data = response.data.results || response.data;
+      // If `user.province` is a numeric ID, send it to backend.
+      // Otherwise omit the param and filter by name client-side (some test users may have only province_name).
+      const params: any = { status: 'out_for_delivery' };
+      if (typeof user?.province === 'number') {
+        params.to_province = user.province;
+      }
+
+      const response = await api.get('/warehouses/shipments/', { params });
+      let data = response.data.results || response.data || [];
+
+      // If we didn't filter by numeric province id (because user.province was a name),
+      // filter locally by `province_name` or province.name field.
+      if (typeof user?.province !== 'number' && user?.province_name) {
+        const pname = user.province_name;
+        data = (Array.isArray(data) ? data : []).filter((s: any) => {
+          return s.to_province?.province === pname || s.to_province?.name === pname || s.to_province === pname;
+        });
+      }
+
       setShipments(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching shipments:', error);

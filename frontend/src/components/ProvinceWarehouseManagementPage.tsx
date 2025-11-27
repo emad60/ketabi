@@ -38,7 +38,7 @@ export function ProvinceWarehouseManagementPage() {
         'Content-Type': 'application/json',
       };
 
-      const response = await fetch('http://localhost:8000/api/warehouses/province-warehouses/', {
+      const response = await fetch('http://localhost:8000/api/warehouses/province/', {
         headers,
       });
       const data = await response.json();

@@ -126,7 +126,21 @@ test('create request → approve → create shipment → open shipment details �
 
   // Find the shipment row by shipment number and click its details button
   const row = page.locator(`tr:has-text("${shipmentNumber}")`);
-  await expect(row).toHaveCount(1);
+  try {
+    await expect(row).toHaveCount(1, { timeout: 15000 });
+  } catch (err) {
+    // Debug fallback: capture page HTML and screenshot for investigation
+    const snapshotPath = `test-results/debug-shipment-${shipmentNumber}.png`;
+    const html = await page.content();
+    console.log('[E2E DEBUG] Shipment row not found. Saving debug snapshot and HTML.');
+    await page.screenshot({ path: snapshotPath, fullPage: true }).catch(() => {});
+    // Save HTML to test-results
+    try {
+      const fs = require('fs');
+      fs.writeFileSync(`test-results/debug-shipment-${shipmentNumber}.html`, html);
+    } catch (e) {}
+    throw err;
+  }
   await row.locator('button', { hasText: 'تفاصيل' }).click();
 
   // Wait for dialog and ensure related request link is visible

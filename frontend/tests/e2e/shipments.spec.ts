@@ -125,7 +125,7 @@ test('create request → approve → create shipment → open shipment details �
   await page.waitForLoadState('networkidle');
 
   // Find the shipment row by shipment number and click its details button
-  const row = page.locator(`tr:has-text("${shipmentNumber}")`);
+  const row = page.locator(`text=شحنة #${shipmentNumber}`);
   try {
     await expect(row).toHaveCount(1, { timeout: 15000 });
   } catch (err) {

@@ -32,6 +32,13 @@ frontend/dist/
 frontend/dist-ssr/
 frontend/*.local
 
+# Playwright and test artifacts (local only)
+frontend/playwright-report/
+frontend/test-results/
+
+# Local backend test DB
+backend/data/
+
 # Logs
 logs/
 *.log

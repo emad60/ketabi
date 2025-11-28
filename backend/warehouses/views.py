@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Count, Sum, Q, F
 from django.utils import timezone
 from datetime import timedelta
@@ -185,6 +185,19 @@ class WarehouseStockViewSet(viewsets.ModelViewSet):
         min_threshold = data.get("min_threshold")
         mode = data.get("mode", "set")
 
+        # Permission enforcement: only ministry staff/warehouse can upsert ministry stocks
+        user = request.user
+        if not user or not user.is_authenticated:
+            return Response({"detail": "Authentication credentials were not provided."}, status=status.HTTP_401_UNAUTHORIZED)
+
+        if ministry_id:
+            if getattr(user, 'role', None) not in ['admin', 'ministry_staff', 'ministry_warehouse', 'ministry_admin']:
+                return Response({"detail": "You do not have permission to modify ministry warehouse stocks."}, status=status.HTTP_403_FORBIDDEN)
+
+        if province_id:
+            if getattr(user, 'role', None) not in ['admin', 'province_staff', 'province_warehouse', 'province_admin']:
+                return Response({"detail": "You do not have permission to modify province warehouse stocks."}, status=status.HTTP_403_FORBIDDEN)
+
         if not book_id or not term or (not ministry_id and not province_id):
             return Response({"detail": "book, term and one of ministry_warehouse or province_warehouse are required."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -248,7 +261,7 @@ class WarehouseStockViewSet(viewsets.ModelViewSet):
             create_kwargs["province_warehouse_id"] = province_id
 
         try:
-            with models.transaction.atomic():
+            with transaction.atomic():
                 stock = WarehouseStock.objects.create(**create_kwargs)
                 # record initial movement
                 try:

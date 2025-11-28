@@ -58,6 +58,7 @@ interface SchoolRequest {
 
 export function ProvinceSchoolRequestsPage() {
   const { user } = useAuthStore();
+  const isMinistryUser = !!(user && ['ministry_admin', 'ministry_staff'].includes(user.role));
   const [requests, setRequests] = useState<SchoolRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedRequest, setSelectedRequest] = useState<SchoolRequest | null>(null);
@@ -288,7 +289,7 @@ export function ProvinceSchoolRequestsPage() {
                           <Eye className="w-4 h-4 ml-1" />
                           عرض
                         </Button>
-                        {request.status === 'submitted' && (
+                        {request.status === 'submitted' && isMinistryUser && (
                           <>
                             <Button
                               size="sm"
@@ -397,7 +398,7 @@ export function ProvinceSchoolRequestsPage() {
             <Button variant="outline" onClick={() => setShowDetailsDialog(false)}>
               إغلاق
             </Button>
-            {selectedRequest?.status === 'submitted' && (
+            {selectedRequest?.status === 'submitted' && isMinistryUser && (
               <>
                 <Button
                   variant="default"

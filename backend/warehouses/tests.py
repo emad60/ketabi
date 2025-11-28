@@ -29,6 +29,8 @@ class WarehouseStockUpsertTests(TestCase):
 			'min_threshold': 3
 		}
 		resp = self.client.post(url, payload, format='json')
+		if resp.status_code not in (200, 201):
+			print('DEBUG UPSET RESP:', resp.status_code, getattr(resp, 'data', None), resp.content)
 		self.assertIn(resp.status_code, (200, 201))
 		stock = WarehouseStock.objects.filter(ministry_warehouse=self.mwh, book=self.book, term='first').first()
 		self.assertIsNotNone(stock)

@@ -1,0 +1,38 @@
+[
+  {
+    "model": "books.book",
+    "pk": 1,
+    "fields": {
+      "subject": "math",
+      "grade_level": "6",
+      "term": 1,
+      "edition": "1",
+      "year": 2024,
+      "total_quantity": 200
+    }
+  },
+  {
+    "model": "books.book",
+    "pk": 2,
+    "fields": {
+      "subject": "science",
+      "grade_level": "5",
+      "term": 1,
+      "edition": "1",
+      "year": 2024,
+      "total_quantity": 150
+    }
+  },
+  {
+    "model": "books.book",
+    "pk": 3,
+    "fields": {
+      "subject": "arabic",
+      "grade_level": "4",
+      "term": 1,
+      "edition": "1",
+      "year": 2024,
+      "total_quantity": 180
+    }
+  }
+]

@@ -84,7 +84,7 @@ export function StockEntryPage({ warehouseType }: StockEntryPageProps) {
 
   useEffect(() => {
     if (searchTerm) {
-      const q = searchTerm.toLowerCase();
+      const q = (searchTerm || '').toLowerCase();
       const filtered = books.filter(book => 
         (book.title || '').toLowerCase().includes(q) ||
         (book.subject_display || '').toLowerCase().includes(q) ||

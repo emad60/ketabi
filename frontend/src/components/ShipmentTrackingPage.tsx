@@ -232,7 +232,7 @@ export function ShipmentTrackingPage() {
   };
 
   const filteredShipments = shipments.filter(shipment => {
-    const q = searchTerm.toLowerCase();
+    const q = (searchTerm || '').toLowerCase();
     const matchesSearch = 
       (shipment.tracking_number || '').toLowerCase().includes(q) ||
       (shipment.from_warehouse || '').toLowerCase().includes(q) ||

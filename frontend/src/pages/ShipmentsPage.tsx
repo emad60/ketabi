@@ -118,9 +118,10 @@ export function ShipmentsPage() {
   };
 
   const filteredShipments = shipments.filter(s => {
+    const q = (searchTerm || '').toLowerCase();
     const matchesSearch = 
-      (s.to_province?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (s.to_school_name || '').toLowerCase().includes(searchTerm.toLowerCase());
+      (s.to_province?.name || '').toLowerCase().includes(q) ||
+      (s.to_school_name || '').toLowerCase().includes(q);
     const matchesStatus = statusFilter === 'all' || s.status === statusFilter;
     return matchesSearch && matchesStatus;
   });

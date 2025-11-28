@@ -157,7 +157,7 @@ export function WarehouseStockPage() {
   };
 
   const filteredStocks = stocks.filter(s => 
-    (String((s as any).book_label || (s as any).book || '')).toLowerCase().includes(searchTerm.toLowerCase())
+    (String((s as any).book_label || (s as any).book || '')).toLowerCase().includes((searchTerm || '').toLowerCase())
   );
 
   const lowStockItems = stocks.filter(s => s.quantity <= s.min_threshold);

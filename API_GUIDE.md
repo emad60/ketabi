@@ -184,6 +184,39 @@ Content-Type: application/json
 }
 ```
 
+### Upsert (إنشاء/تحديث) مخزون المستودعات - جديد
+```
+POST /api/warehouses/stocks/upsert/
+Authorization: Bearer {token}
+Content-Type: application/json
+
+# Payload example (set quantity):
+{
+  "ministry_warehouse": 1,
+  "book": 5,
+  "term": "first",
+  "quantity": 100,
+  "min_threshold": 10,
+  "mode": "set"   # or "increment"
+}
+
+# Payload example (increment existing):
+{
+  "province_warehouse": 2,
+  "book": 3,
+  "term": "first",
+  "quantity": 20,
+  "mode": "increment"
+}
+
+# Notes:
+- If an existing `WarehouseStock` matches (warehouse + book + term) it will be updated.
+- If not found, a new `WarehouseStock` will be created.
+- `mode` defaults to `set`. Use `increment` to add `quantity` to the existing value.
+- Permissions: Only ministry staff/warehouse roles can upsert ministry stocks; only province staff/warehouse roles can upsert province stocks. Requests by unauthorized roles return `403 Forbidden`.
+
+```
+
 ---
 
 ## 🚚 إدارة الشحنات

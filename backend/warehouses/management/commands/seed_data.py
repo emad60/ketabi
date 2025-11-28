@@ -50,11 +50,26 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS("Created/updated warehouses."))
 
-        # Create sample stock for first available books
-        books = list(Book.objects.all()[:3])
-        if not books:
-            self.stdout.write(self.style.WARNING("No books found in DB - skipping stock creation. Create books first."))
-            return
+        # Ensure deterministic sample books exist (create if missing)
+        sample_books = [
+            {"subject": "math", "grade_level": "6", "term": 1, "edition": "1", "year": 2024},
+            {"subject": "science", "grade_level": "5", "term": 1, "edition": "1", "year": 2024},
+            {"subject": "arabic", "grade_level": "4", "term": 1, "edition": "1", "year": 2024},
+        ]
+
+        books = []
+        for sb in sample_books:
+            b, created = Book.objects.get_or_create(
+                subject=sb["subject"],
+                grade_level=sb["grade_level"],
+                term=sb["term"],
+                edition=sb.get("edition", ""),
+                year=sb.get("year", None),
+                defaults={"total_quantity": 100}
+            )
+            books.append(b)
+            if created:
+                self.stdout.write(self.style.SUCCESS(f"Created book {b}"))
 
         for b in books:
             stock, created = WarehouseStock.objects.get_or_create(

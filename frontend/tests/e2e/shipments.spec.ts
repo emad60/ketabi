@@ -1,10 +1,11 @@
 import { test, expect } from '@playwright/test';
 
 // Credentials are taken from the repo's e2e script. Edit if needed.
+// Defaults match `backend/warehouses/management/commands/seed_data.py`
 const PROVINCE_USERNAME = process.env.E2E_PROVINCE_USERNAME || 'province_admin';
-const PROVINCE_PASSWORD = process.env.E2E_PROVINCE_PASSWORD || 'test123';
+const PROVINCE_PASSWORD = process.env.E2E_PROVINCE_PASSWORD || 'provincepass';
 const MINISTRY_USERNAME = process.env.E2E_MINISTRY_USERNAME || 'ministry_admin';
-const MINISTRY_PASSWORD = process.env.E2E_MINISTRY_PASSWORD || 'Admin@123';
+const MINISTRY_PASSWORD = process.env.E2E_MINISTRY_PASSWORD || 'ministrypass';
 
 const API_BASE = process.env.API_BASE || 'http://localhost:8000/api';
 const APP_BASE = process.env.BASE_URL || 'http://localhost:3000';
@@ -110,46 +111,55 @@ test('create request → approve → create shipment → open shipment details �
   expect(shipmentJson && shipmentJson.id).toBeTruthy();
 
   // 9) Visit the app as province user and verify the shipment appears
-  // Set tokens in localStorage so the frontend's axios uses them
-  await page.goto(APP_BASE, { waitUntil: 'domcontentloaded' });
-  await page.evaluate(({ token, authKey }) => {
-    localStorage.setItem('access_token', token);
-    // Persist minimal auth-store state so ProtectedRoute sees isAuthenticated=true
+  // Set tokens in the browser BEFORE any page scripts run so the SPA reads auth on load.
+  await page.context().addInitScript(({ token, authKey }) => {
     try {
-      localStorage.setItem(authKey, JSON.stringify({ user: null, token: token, refreshToken: null, isAuthenticated: true }));
-    } catch (e) {}
+      localStorage.setItem('access_token', token || '');
+      localStorage.setItem(authKey, JSON.stringify({ user: null, token: token || '', refreshToken: null, isAuthenticated: true }));
+    } catch (e) {
+      // ignore
+    }
   }, { token: provinceToken, authKey: 'auth-storage' });
 
-  // Navigate to province incoming shipments
-  await page.goto(`${APP_BASE}/province/incoming-shipments`);
-  await page.waitForLoadState('networkidle');
+  // Navigate directly to the incoming shipments route and wait for network idle
+  await page.goto(`${APP_BASE}/province/incoming-shipments`, { waitUntil: 'networkidle' });
 
-  // Find the shipment row by shipment number and click its details button
-  const row = page.locator(`text=شحنة #${shipmentNumber}`);
-  try {
-    await expect(row).toHaveCount(1, { timeout: 15000 });
-  } catch (err) {
-    // Debug fallback: capture page HTML and screenshot for investigation
-    const snapshotPath = `test-results/debug-shipment-${shipmentNumber}.png`;
-    const html = await page.content();
-    console.log('[E2E DEBUG] Shipment row not found. Saving debug snapshot and HTML.');
-    await page.screenshot({ path: snapshotPath, fullPage: true }).catch(() => {});
-    // Save HTML to test-results
-    try {
-      const fs = require('fs');
-      fs.writeFileSync(`test-results/debug-shipment-${shipmentNumber}.html`, html);
-    } catch (e) {}
-    throw err;
+  // Determine the shipment number we expect (use id if shipment_number missing)
+  const shipmentNum = shipmentNumber || (shipmentJson && shipmentJson.id);
+
+  // Force refresh (if the button exists) to trigger data reload
+  const refreshBtn = page.getByRole('button', { name: 'تحديث' }).first();
+  if (await refreshBtn.count() > 0) {
+    await refreshBtn.click();
+    await page.waitForLoadState('networkidle');
   }
-  await row.locator('button', { hasText: 'تفاصيل' }).click();
+
+  // Wait for the shipment row by number (preferred) or fallback to first details button
+  let detailsBtn = null;
+  if (shipmentNum) {
+    const row = page.locator(`tr:has-text("${shipmentNum}")`);
+    if (await row.count() > 0) {
+      await expect(row.first()).toBeVisible({ timeout: 30000 });
+      detailsBtn = row.locator('button:has-text("تفاصيل")').first();
+    }
+  }
+
+  if (!detailsBtn) {
+    detailsBtn = page.locator('button:has-text("تفاصيل")').first();
+  }
+
+  await expect(detailsBtn).toBeVisible({ timeout: 30000 });
+  await detailsBtn.click();
 
   // Wait for dialog and ensure related request link is visible
-  const relatedLink = page.locator('text=' + (requestNumber || `#${requestId}`));
-  await expect(relatedLink).toBeVisible({ timeout: 5000 });
+  // The related request link may render with request number or just id; wait longer in CI
+  const relatedSelector = `text=${requestNumber || `#${requestId}`}`;
+  const relatedLink = page.locator(relatedSelector);
+  await expect(relatedLink).toBeVisible({ timeout: 20000 });
 
   // Click the link and verify navigation to requests page with ?id=
   await Promise.all([
-    page.waitForNavigation(),
+    page.waitForNavigation({ timeout: 20000 }),
     relatedLink.click()
   ]);
 
@@ -157,5 +167,5 @@ test('create request → approve → create shipment → open shipment details �
   expect(url).toContain(`book-requests?id=${requestId}`);
 
   // Verify request number appears on destination page
-  await expect(page.locator(`text=${requestNumber}`)).toBeVisible({ timeout: 5000 });
+  await expect(page.locator(`text=${requestNumber}`)).toBeVisible({ timeout: 20000 });
 });

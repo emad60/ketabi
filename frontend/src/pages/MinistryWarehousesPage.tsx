@@ -97,8 +97,8 @@ export function MinistryWarehousesPage() {
   };
 
   const filteredWarehouses = warehouses.filter(w => 
-    (w.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (w.location || '').toLowerCase().includes(searchTerm.toLowerCase())
+    (w.name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+    (w.location || '').toLowerCase().includes((searchTerm || '').toLowerCase())
   );
 
   if (loading && warehouses.length === 0) {

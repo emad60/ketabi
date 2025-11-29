@@ -107,10 +107,11 @@ class BookRequestSerializer(serializers.ModelSerializer):
                 subject_code = SUBJECT_NAME_TO_CODE.get(subject_text, subject_text)
                 
                 try:
-                    book = Book.objects.get(
+                    # Use filter().first() instead of get() to avoid MultipleObjectsReturned
+                    book = Book.objects.filter(
                         subject=subject_code,
                         grade_level=grade_number
-                    )
+                    ).first()
                 except Book.DoesNotExist:
                     pass
             
@@ -149,10 +150,11 @@ class BookRequestSerializer(serializers.ModelSerializer):
                     subject_code = SUBJECT_NAME_TO_CODE.get(subject_text, subject_text)
                     
                     try:
-                        book = Book.objects.get(
+                        # Use filter().first() instead of get() to avoid MultipleObjectsReturned
+                        book = Book.objects.filter(
                             subject=subject_code,
                             grade_level=grade_number
-                        )
+                        ).first()
                     except Book.DoesNotExist:
                         pass
                 

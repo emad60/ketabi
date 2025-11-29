@@ -111,17 +111,18 @@ test('create request → approve → create shipment → open shipment details �
   expect(shipmentJson && shipmentJson.id).toBeTruthy();
 
   // 9) Visit the app as province user and verify the shipment appears
-  // Set tokens in the browser BEFORE any page scripts run so the SPA reads auth on load.
-  await page.context().addInitScript(({ token, authKey }) => {
-    try {
-      localStorage.setItem('access_token', token || '');
-      localStorage.setItem(authKey, JSON.stringify({ user: null, token: token || '', refreshToken: null, isAuthenticated: true }));
-    } catch (e) {
-      // ignore
-    }
-  }, { token: provinceToken, authKey: 'auth-storage' });
+  // Perform actual login through the UI to ensure proper auth state
+  await page.goto(APP_BASE);
 
-  // Navigate directly to the incoming shipments route and wait for network idle
+  // Fill login form with province credentials
+  await page.getByPlaceholder('أدخل اسم المستخدم').fill('province_admin');
+  await page.getByPlaceholder('أدخل كلمة المرور').fill('provincepass');
+  await page.getByRole('button', { name: 'تسجيل الدخول' }).click();
+
+  // Wait for successful login and redirect
+  await page.waitForLoadState('networkidle');
+
+  // Navigate to incoming shipments
   await page.goto(`${APP_BASE}/province/incoming-shipments`, { waitUntil: 'networkidle' });
 
   // Determine the shipment number we expect (use id if shipment_number missing)
@@ -166,6 +167,6 @@ test('create request → approve → create shipment → open shipment details �
   const url = page.url();
   expect(url).toContain(`book-requests?id=${requestId}`);
 
-  // Verify request number appears on destination page
-  await expect(page.locator(`text=${requestNumber}`)).toBeVisible({ timeout: 20000 });
+  // Verify request number appears on destination page (use heading for strict matching)
+  await expect(page.getByRole('heading', { name: new RegExp(requestNumber || `#${requestId}`) })).toBeVisible({ timeout: 20000 });
 });

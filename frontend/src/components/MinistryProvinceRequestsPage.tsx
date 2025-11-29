@@ -28,7 +28,7 @@ import {
 } from './ui/select';
 import { Package, Clock, CheckCircle, XCircle, Eye, FileText } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
-import api from '../services/api';
+import bookRequestService from '../services/bookRequestService';
 
 interface RequestItem {
   id: number;
@@ -71,13 +71,9 @@ export function MinistryProvinceRequestsPage() {
   const fetchRequests = async () => {
     try {
       setLoading(true);
-      
-      const response = await api.get('/book-requests/province/');
-      console.log('API Response:', response.data);
-      
-      // Handle paginated response format from DRF
-      const data = response.data.results || response.data;
-      console.log('Setting requests:', Array.isArray(data) ? data.length : 0, 'items');
+      const response = await bookRequestService.getBookRequests({ scope: 'province' } as any);
+      // bookRequestService returns array or paginated response depending on backend
+      const data = Array.isArray(response) ? response : (response.results || response);
       setRequests(Array.isArray(data) ? data : []);
       
       setLoading(false);
@@ -106,12 +102,11 @@ export function MinistryProvinceRequestsPage() {
     try {
       setProcessing(true);
       
-      const payload = {
-        action: actionType,
-        rejection_reason: actionType === 'reject' ? actionNotes : undefined,
-      };
-      
-      await api.post(`/book-requests/province/${selectedRequest.id}/approve-reject/`, payload);
+      if (actionType === 'approve') {
+        await bookRequestService.approveRequest(selectedRequest.id);
+      } else {
+        await bookRequestService.rejectRequest(selectedRequest.id, actionNotes);
+      }
       
       alert(`تم ${actionType === 'approve' ? 'الموافقة على' : 'رفض'} الطلب بنجاح`);
       setIsActionDialogOpen(false);

@@ -29,9 +29,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from './ui/select';
-import { Plus, Trash2, Send, Package, Clock, CheckCircle, XCircle, FileText } from 'lucide-react';
+import { Plus, Trash2, Send, Package, Clock, CheckCircle, XCircle, FileText, Eye } from 'lucide-react';
+import { Badge } from './ui/badge';
 import { useAuthStore } from '../store/authStore';
-import api from '../services/api';
+import bookRequestService from '../services/bookRequestService';
+import bookService from '../services/bookService';
 
 interface Book {
   id: number;
@@ -117,8 +119,8 @@ export function ProvinceBookRequestPage() {
     if (paramId) {
       (async () => {
         try {
-          const resp = await api.get(`/book-requests/province/${paramId}/`);
-          setSelectedRequest(resp.data);
+          const resp = await bookRequestService.getBookRequest(parseInt(paramId, 10));
+          setSelectedRequest(resp);
           setShowDetails(true);
         } catch (err) {
           console.error('Failed to load province request from query param:', err);
@@ -131,17 +133,13 @@ export function ProvinceBookRequestPage() {
     try {
       setLoading(true);
       
-      // Fetch books
-      const booksResponse = await api.get('/books/');
-      console.log('Books API Response:', booksResponse.data);
-      const booksData = booksResponse.data.results || booksResponse.data;
+      // Fetch books via service
+      const booksData = await bookService.getBooks();
       setBooks(Array.isArray(booksData) ? booksData : []);
-      
-      // Fetch province requests
-      const requestsResponse = await api.get('/book-requests/province/');
-      console.log('Province Requests API Response:', requestsResponse.data);
-      const requestsData = requestsResponse.data.results || requestsResponse.data;
-      console.log('Number of requests:', Array.isArray(requestsData) ? requestsData.length : 0);
+
+      // Fetch province requests via service (scope handled by service)
+      const resp = await bookRequestService.getBookRequests({ scope: 'province' } as any);
+      const requestsData = Array.isArray(resp) ? resp : (resp.results || resp);
       setRequests(Array.isArray(requestsData) ? requestsData : []);
       
       setLoading(false);
@@ -193,7 +191,7 @@ export function ProvinceBookRequestPage() {
         notes: notes,
       };
       
-      await api.post('/book-requests/province/', requestData);
+      await bookRequestService.createBookRequest(requestData as any);
       
       alert('تم إرسال الطلب بنجاح');
       setIsDialogOpen(false);
@@ -504,8 +502,8 @@ export function ProvinceBookRequestPage() {
                     <TableCell>
                       <Button size="sm" variant="outline" onClick={async () => {
                         try {
-                          const resp = await api.get(`/book-requests/province/${request.id}/`);
-                          setSelectedRequest(resp.data);
+                          const resp = await bookRequestService.getBookRequest(request.id);
+                          setSelectedRequest(resp);
                           setShowDetails(true);
                         } catch (err) {
                           console.error('Failed to fetch request details:', err);

@@ -17,18 +17,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from './ui/dialog';
-import { 
-  TruckIcon, 
-  Package, 
-  Eye, 
+import {
+  TruckIcon,
+  Package,
+  Eye,
   Loader2,
   ArrowUp,
   ArrowDown,
   Calendar,
-  MapPin,
-  CheckCircle
+  CheckCircle,
 } from 'lucide-react';
 import api from '../services/api';
+import shipmentsService from '../services/shipments';
+import requestsService from '../services/requests';
 import { Link } from 'react-router-dom';
 import { ReceiveShipmentDialog } from './ReceiveShipmentDialog';
 
@@ -46,6 +47,7 @@ interface Shipment {
   updated_at: string;
   notes?: string;
   items?: any[];
+  related_request?: number | null;
 }
 
 interface ShipmentsPageProps {
@@ -70,14 +72,12 @@ export function ShipmentsPage({ direction, userType }: ShipmentsPageProps) {
   const loadShipments = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/warehouses/shipments/', {
-        params: {
-          page_size: 100,
-          status: filterStatus !== 'all' ? filterStatus : undefined
-        }
+      const dataResp = await shipmentsService.listShipments({
+        page_size: 100,
+        status: filterStatus !== 'all' ? filterStatus : undefined,
       });
 
-      let data = response.data.results || response.data || [];
+      let data = dataResp.results || dataResp || [];
 
       // Filter based on direction and user type
       if (userType === 'ministry') {
@@ -108,7 +108,7 @@ export function ShipmentsPage({ direction, userType }: ShipmentsPageProps) {
     }
   };
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status?: string) => {
     const variants: any = {
       pending: 'secondary',
       assigned: 'default',
@@ -126,6 +126,10 @@ export function ShipmentsPage({ direction, userType }: ShipmentsPageProps) {
       confirmed: 'bg-green-600 text-white',
       canceled: 'bg-red-100 text-red-800'
     };
+
+    if (!status) {
+      return <Badge className="">-</Badge>;
+    }
 
     return (
       <Badge className={colors[status] || ''}>
@@ -153,8 +157,8 @@ export function ShipmentsPage({ direction, userType }: ShipmentsPageProps) {
       }
 
       try {
-        const resp = await api.get(`/book-requests/${selectedShipment['related_request']}/`);
-        setRelatedRequest(resp.data);
+        const resp = await requestsService.getRequest(selectedShipment['related_request']);
+        setRelatedRequest(resp);
       } catch (err) {
         console.error('Failed to load related request:', err);
         setRelatedRequest(null);

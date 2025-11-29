@@ -59,6 +59,7 @@ import {
 } from 'recharts';
 import { useAuthStore } from '../store/authStore';
 import shipmentService from '../services/shipmentService';
+import statisticsService from '../services/statisticsService';
 import api from '../services/api';
 import { CreateShipmentDialog } from './CreateShipmentDialog';
 import { ShipmentDetailsDialog } from './ShipmentDetailsDialog';
@@ -111,14 +112,25 @@ export function MinistryShipmentManagementPage() {
     try {
       setLoading(true);
       
-      // Fetch shipments using API directly
-      const shipmentsRes = await api.get('/warehouses/shipments/');
-      const shipmentsData = shipmentsRes.data.results || shipmentsRes.data;
-      setShipments(Array.isArray(shipmentsData) ? shipmentsData : []);
+      // Fetch shipments via shipmentService
+      try {
+        const shipmentsData = await shipmentService.getShipments({ page_size: 100 });
+        // shipmentService returns array or paginated response depending on backend
+        const sData = Array.isArray(shipmentsData) ? shipmentsData : (shipmentsData.results || shipmentsData);
+        setShipments(Array.isArray(sData) ? sData : []);
+      } catch (e) {
+        console.error('Failed to fetch shipments via service:', e);
+        setShipments([]);
+      }
 
-      // Fetch stats directly from API
-      const statsRes = await api.get('/warehouses/stats/ministry/');
-      setStats(statsRes.data);
+      // Fetch stats via statisticsService
+      try {
+        const statsData = await statisticsService.getMinistryStats();
+        setStats(statsData);
+      } catch (e) {
+        console.error('Failed to fetch stats via service:', e);
+        setStats(null);
+      }
 
       setLoading(false);
     } catch (error) {

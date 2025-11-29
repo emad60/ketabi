@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from './ui/select';
-import { Loader2, CheckCircle, Package } from 'lucide-react';
+import { Loader2, CheckCircle, Package, UserCircle } from 'lucide-react';
 import api from '../services/api';
 
 interface CreateShipmentFromRequestDialogProps {
@@ -46,13 +46,15 @@ export function CreateShipmentFromRequestDialog({
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     from_warehouse: '',
-    to_warehouse: '', // Add manual province warehouse selection
+    to_warehouse: '',
+    assigned_courier: '',
     notes: '',
   });
 
   const [books, setBooks] = useState<BookItem[]>([]);
   const [ministryWarehouses, setMinistryWarehouses] = useState<any[]>([]);
   const [provinceWarehouses, setProvinceWarehouses] = useState<any[]>([]);
+  const [couriers, setCouriers] = useState<any[]>([]);
 
   useEffect(() => {
     if (open && request) {
@@ -74,6 +76,12 @@ export function CreateShipmentFromRequestDialog({
         params: { page_size: 100 }
       });
       setProvinceWarehouses(provinceRes.data.results || provinceRes.data || []);
+
+      // Load ministry couriers
+      const couriersRes = await api.get('/users/', {
+        params: { role: 'ministry_courier', page_size: 100 }
+      });
+      setCouriers(couriersRes.data.results || couriersRes.data || []);
     } catch (error) {
       console.error('Error loading data:', error);
     }
@@ -141,24 +149,59 @@ export function CreateShipmentFromRequestDialog({
       }
 
       // Create shipment payload
-      const payload = {
+      const payload: any = {
         from_ministry: parseInt(formData.from_warehouse),
         to_province: parseInt(formData.to_warehouse),
         books: books.map(b => ({
           book_id: b.book_id,
           quantity: b.quantity,
-          term: 'first' // يمكن تعديله حسب الحاجة
+          term: 'first'
         })),
         courier_role: 'ministry_courier',
         notes: formData.notes || `شحنة خاصة بالطلب رقم ${request.request_number || request.id}`,
-        related_request_id: request.id, // للربط مع الطلب
+        related_request_id: request.id,
       };
+
+      // Add assigned courier if selected
+      if (formData.assigned_courier) {
+        payload.assigned_courier = parseInt(formData.assigned_courier);
+        payload.status = 'assigned'; // تغيير الحالة إلى مُسندة
+      }
 
       console.log('Creating shipment from request:', payload);
       console.log('Payload stringified:', JSON.stringify(payload, null, 2));
       const response = await api.post('/warehouses/shipments/', payload);
       
-      alert('✅ تم إنشاء الشحنة بنجاح!');
+      // عرض تفاصيل الشحنة المنشأة
+      const shipmentData = response.data;
+      const details = [
+        '✅ تم إنشاء الشحنة بنجاح!',
+        '',
+        `📦 رقم الشحنة: ${shipmentData.id}`,
+        `📍 من: ${shipmentData.from_ministry_name || 'المستودع الوزاري'}`,
+        `📍 إلى: ${shipmentData.to_province_name || 'مستودع المحافظة'}`,
+        `📚 عدد الكتب: ${books.length} نوع`,
+        `📊 الحالة: ${shipmentData.status === 'assigned' ? 'مُسندة للمندوب' : 'قيد الانتظار'}`,
+      ];
+      
+      if (shipmentData.assigned_courier_name) {
+        details.push(`🚚 المندوب: ${shipmentData.assigned_courier_name}`);
+      }
+      
+      alert(details.join('\n'));
+      
+      // إنشاء إشعار للمحافظة
+      try {
+        await api.post('/notifications/', {
+          title: 'شحنة واردة جديدة',
+          message: `تم إرسال شحنة جديدة من الوزارة - رقم الشحنة: ${shipmentData.id}\nعدد الكتب: ${books.length} نوع\nالمستودع: ${shipmentData.to_province_name}`,
+          notification_type: 'shipment',
+          related_object_id: shipmentData.id,
+        });
+      } catch (notifError) {
+        console.warn('Failed to create notification:', notifError);
+      }
+      
       onSuccess();
       onClose();
       
@@ -166,6 +209,7 @@ export function CreateShipmentFromRequestDialog({
       setFormData({
         from_warehouse: '',
         to_warehouse: '',
+        assigned_courier: '',
         notes: '',
       });
     } catch (error: any) {
@@ -276,6 +320,35 @@ export function CreateShipmentFromRequestDialog({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          {/* اختيار المندوب */}
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2">
+              <UserCircle className="w-4 h-4" />
+              إسناد لمندوب (اختياري)
+            </Label>
+            <Select 
+              value={formData.assigned_courier} 
+              onValueChange={(value) => setFormData({...formData, assigned_courier: value})}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="اختر مندوب التوصيل" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">بدون مندوب (يمكن الإسناد لاحقاً)</SelectItem>
+                {couriers.map(courier => (
+                  <SelectItem key={courier.id} value={courier.id.toString()}>
+                    {courier.full_name || courier.username} - {courier.phone || 'لا يوجد رقم'}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {formData.assigned_courier && (
+              <p className="text-sm text-blue-600">
+                ℹ️ سيتم إسناد الشحنة للمندوب مباشرة وتغيير حالتها إلى "مُسندة"
+              </p>
+            )}
           </div>
 
           {/* قائمة الكتب الموافق عليها */}

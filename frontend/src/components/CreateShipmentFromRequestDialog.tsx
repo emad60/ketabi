@@ -82,14 +82,32 @@ export function CreateShipmentFromRequestDialog({
   const prepareBooks = () => {
     if (!request?.items) return;
 
+    console.log('[DEBUG] Request items:', request.items);
+    console.log('[DEBUG] Approved items:', approvedItems);
+
     // Map approved items to book items format
     const bookItems: BookItem[] = request.items
       .map((item: any) => {
         const approvedItem = approvedItems.find(ai => ai.id === item.id);
         if (!approvedItem || approvedItem.approved_quantity <= 0) return null;
 
+        // Extract book_id from various possible locations
+        const bookId = item.book_id || item.book?.id || item.book;
+        
+        console.log('[DEBUG] Processing item:', {
+          itemId: item.id,
+          rawItem: item,
+          extractedBookId: bookId,
+          approvedQty: approvedItem.approved_quantity
+        });
+
+        if (!bookId) {
+          console.error('[DEBUG] No book_id found for item:', item);
+          return null;
+        }
+
         return {
-          book_id: item.book_id || item.book?.id,
+          book_id: typeof bookId === 'object' ? bookId.id : bookId,
           book_name: item.book?.title || item.book_title || 'غير محدد',
           subject_display: item.subject || item.book?.subject_display || '-',
           grade_display: item.grade || item.book?.grade_display || '-',
@@ -98,6 +116,7 @@ export function CreateShipmentFromRequestDialog({
       })
       .filter(Boolean) as BookItem[];
 
+    console.log('[DEBUG] Prepared books:', bookItems);
     setBooks(bookItems);
   };
 
@@ -153,7 +172,6 @@ export function CreateShipmentFromRequestDialog({
       console.error('Error creating shipment:', error);
       console.error('Error response:', error.response?.data);
       console.error('Error status:', error.response?.status);
-      console.error('Payload sent:', payload);
       
       let errorMsg = 'حدث خطأ أثناء إنشاء الشحنة';
       

@@ -68,7 +68,12 @@ class ProvinceWarehouseViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if getattr(user, "role", None) == "province_staff":
+        # Province admins and staff can see their province warehouses
+        if getattr(user, "role", None) in ["province_admin", "province_staff"]:
+            # If user has province attribute, filter by province
+            if hasattr(user, "province") and user.province:
+                return ProvinceWarehouse.objects.filter(province=user.province)
+            # If user is staff of specific warehouses
             return ProvinceWarehouse.objects.filter(staff=user)
         return super().get_queryset()
 
@@ -101,9 +106,14 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         user = self.request.user
         qs = super().get_queryset()
 
-        if getattr(user, "role", None) == "province_staff":
+        # Province admins and staff can see shipments to their province
+        if getattr(user, "role", None) in ["province_admin", "province_staff"]:
+            if hasattr(user, "province") and user.province:
+                return qs.filter(to_province__province=user.province)
+            # Fallback to warehouses they are staff of
             return qs.filter(to_province__in=user.province_warehouses.all())
 
+        # Couriers see only their assigned shipments
         if getattr(user, "role", None) in ["ministry_courier", "province_courier"]:
             return qs.filter(assigned_courier=user)
 

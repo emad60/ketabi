@@ -102,3 +102,7 @@ class BookRequestViewSet(viewsets.ModelViewSet):
     filterset_fields = ["status", "created_by", "reviewed_by"]
     search_fields = ["request_number", "notes"]
     ordering_fields = ["created_at"]
+    
+    def perform_create(self, serializer):
+        """تعيين created_by تلقائياً عند إنشاء طلب جديد"""
+        serializer.save(created_by=self.request.user)

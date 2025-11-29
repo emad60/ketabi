@@ -74,12 +74,19 @@ api.interceptors.response.use(
         return api(originalRequest);
       } catch (refreshError) {
         // فشل التجديد - تسجيل خروج المستخدم
+        console.error('[API] Refresh token failed, clearing auth');
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
-        localStorage.removeItem('user');
+        localStorage.removeItem('auth-storage');
         
-        // إعادة توجيه لصفحة Login
-        if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+        // إعادة توجيه لصفحة Login مرة واحدة فقط
+        if (typeof window !== 'undefined' && 
+            !window.location.pathname.includes('/login') &&
+            !sessionStorage.getItem('redirecting_to_login')) {
+          sessionStorage.setItem('redirecting_to_login', 'true');
+          setTimeout(() => {
+            sessionStorage.removeItem('redirecting_to_login');
+          }, 1000);
           window.location.href = '/login';
         }
         

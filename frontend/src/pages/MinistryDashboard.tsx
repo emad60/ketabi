@@ -98,6 +98,15 @@ export function MinistryDashboard() {
       setError('');
     } catch (err: any) {
       console.error('Error fetching stats:', err);
+      console.error('Error response:', err.response);
+      
+      // If 401, might be auth issue - don't keep retrying
+      if (err.response?.status === 401) {
+        setError('خطأ في المصادقة - يرجى تسجيل الدخول مرة أخرى');
+        // Clear interval to prevent continuous retries
+        return;
+      }
+      
       setError('فشل تحميل الإحصائيات');
     } finally {
       setLoading(false);
@@ -105,11 +114,18 @@ export function MinistryDashboard() {
   };
 
   useEffect(() => {
+    // Only fetch if user is authenticated
+    if (!user || !user.role) {
+      console.warn('[MinistryDashboard] No user or role, skipping stats fetch');
+      setLoading(false);
+      return;
+    }
+    
     fetchStats();
     // تحديث الإحصائيات كل دقيقة
     const interval = setInterval(fetchStats, 60000);
     return () => clearInterval(interval);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user]); // Add user dependency
 
   const handleLogout = () => {
     clearAuth();

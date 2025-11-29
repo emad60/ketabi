@@ -136,6 +136,7 @@ export function CreateShipmentFromRequestDialog({
       };
 
       console.log('Creating shipment from request:', payload);
+      console.log('Payload stringified:', JSON.stringify(payload, null, 2));
       const response = await api.post('/warehouses/shipments/', payload);
       
       alert('✅ تم إنشاء الشحنة بنجاح!');
@@ -151,10 +152,36 @@ export function CreateShipmentFromRequestDialog({
     } catch (error: any) {
       console.error('Error creating shipment:', error);
       console.error('Error response:', error.response?.data);
-      const errorMsg = error.response?.data?.detail 
-        || error.response?.data?.message 
-        || JSON.stringify(error.response?.data)
-        || 'حدث خطأ أثناء إنشاء الشحنة';
+      console.error('Error status:', error.response?.status);
+      console.error('Payload sent:', payload);
+      
+      let errorMsg = 'حدث خطأ أثناء إنشاء الشحنة';
+      
+      if (error.response?.data) {
+        const data = error.response.data;
+        
+        // Handle field-specific errors
+        if (typeof data === 'object' && !Array.isArray(data)) {
+          const errorMessages = [];
+          for (const [field, messages] of Object.entries(data)) {
+            if (Array.isArray(messages)) {
+              errorMessages.push(`${field}: ${messages.join(', ')}`);
+            } else {
+              errorMessages.push(`${field}: ${messages}`);
+            }
+          }
+          if (errorMessages.length > 0) {
+            errorMsg = errorMessages.join('\n');
+          }
+        } else if (data.detail) {
+          errorMsg = data.detail;
+        } else if (data.message) {
+          errorMsg = data.message;
+        } else {
+          errorMsg = JSON.stringify(data);
+        }
+      }
+      
       alert(errorMsg);
     } finally {
       setLoading(false);

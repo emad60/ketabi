@@ -89,6 +89,21 @@ class ShipmentViewSet(viewsets.ModelViewSet):
     search_fields = ["to_school_name", "to_province__name", "to_province__province"]
     ordering = ["-created_at"]
     
+    def create(self, request, *args, **kwargs):
+        """Override create to add detailed logging"""
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info(f"[SHIPMENT CREATE] User: {request.user.username}, Role: {request.user.role}")
+        logger.info(f"[SHIPMENT CREATE] Request data: {request.data}")
+        
+        try:
+            return super().create(request, *args, **kwargs)
+        except Exception as e:
+            logger.error(f"[SHIPMENT CREATE ERROR] {type(e).__name__}: {str(e)}")
+            logger.error(f"[SHIPMENT CREATE ERROR] Data: {request.data}")
+            raise
+    
     def get_permissions(self):
         """
         Ministry and province staff can view

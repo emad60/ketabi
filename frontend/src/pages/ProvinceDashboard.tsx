@@ -271,6 +271,26 @@ export function ProvinceDashboard() {
                   مخازن المحافظة
                 </Button>
                 
+                {/* طلبات الكتب للوزارة */}
+                <Button 
+                  variant="outline" 
+                  className="h-auto py-4 justify-start"
+                  onClick={() => navigate('/province/book-requests')}
+                >
+                  <FileText className="ml-2 w-5 h-5" />
+                  طلبات الكتب
+                </Button>
+                
+                {/* طلبات المدارس */}
+                <Button 
+                  variant="outline" 
+                  className="h-auto py-4 justify-start"
+                  onClick={() => setActiveTab('school-requests')}
+                >
+                  <School className="ml-2 w-5 h-5" />
+                  طلبات المدارس
+                </Button>
+                
                 {/* إدخال الكتب */}
                 <Button 
                   variant="outline" 
@@ -280,18 +300,10 @@ export function ProvinceDashboard() {
                   <Package className="ml-2 w-5 h-5" />
                   إدخال الكتب
                 </Button>
-                
-                {/* طلبات المدارس */}
-                <Button 
-                  variant="outline" 
-                  className="h-auto py-4 justify-start"
-                  onClick={() => setActiveTab('school-requests')}
-                >
-                  <FileText className="ml-2 w-5 h-5" />
-                  طلبات المدارس
-                </Button>
-                
-                {/* إنشاء شحنة للمدارس */}
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
+                {/* إنشاء شحنة */}
                 <Button 
                   variant="outline" 
                   className="h-auto py-4 justify-start"
@@ -300,9 +312,7 @@ export function ProvinceDashboard() {
                   <TruckIcon className="ml-2 w-5 h-5" />
                   إنشاء شحنة
                 </Button>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
+                
                 {/* إدارة المدارس */}
                 <Button 
                   variant="outline" 

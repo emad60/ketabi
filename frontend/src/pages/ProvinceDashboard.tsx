@@ -25,6 +25,7 @@ import { ProvinceCourierManagementPage } from '../components/ProvinceCourierMana
 import { ProvinceShipmentManagementPage } from '../components/ProvinceShipmentManagementPage';
 import { ProvinceReceiveShipmentsPage } from '../components/ProvinceReceiveShipmentsPage';
 import { ProvinceSchoolRequestsPage } from '../components/ProvinceSchoolRequestsPage';
+import DashboardTopNav from '../components/DashboardTopNav';
 
 interface ProvinceStats {
   province_info: {
@@ -103,132 +104,40 @@ export function ProvinceDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50" dir="rtl">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-3">
-              <div className="bg-purple-600 p-2 rounded-lg">
-                <Building2 className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">نظام كتابي</h1>
-                <p className="text-sm text-gray-600">لوحة تحكم المحافظة</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="text-right">
-                <p className="font-semibold text-gray-900">{user?.full_name}</p>
-                <p className="text-sm text-gray-600">
-                  {user?.province_name || 'موظف محافظة'}
-                </p>
-              </div>
-              <Button variant="outline" size="sm" onClick={handleLogout}>
-                <LogOut className="w-4 h-4 ml-2" />
-                تسجيل خروج
-              </Button>
-            </div>
-          </div>
-        </div>
-      </header>
+      <DashboardTopNav activeTab={activeTab} onTabChange={setActiveTab} role="province" />
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {error && (
           <Alert variant="destructive" className="mb-6">
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
 
-        {/* Tabs Navigation */}
-        <div className="mb-6">
-          <div className="border-b border-gray-200">
-            <nav className="-mb-px flex space-x-reverse space-x-8">
-              <button
-                onClick={() => setActiveTab('overview')}
-                className={`
-                  py-4 px-1 border-b-2 font-medium text-sm transition-colors
-                  ${activeTab === 'overview'
-                    ? 'border-purple-600 text-purple-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }
-                `}
-              >
-                نظرة عامة
-              </button>
-              <button
-                onClick={() => setActiveTab('warehouses')}
-                className={`
-                  py-4 px-1 border-b-2 font-medium text-sm transition-colors
-                  ${activeTab === 'warehouses'
-                    ? 'border-purple-600 text-purple-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }
-                `}
-              >
-                المخازن
-              </button>
-              <button
-                onClick={() => setActiveTab('requests')}
-                className={`
-                  py-4 px-1 border-b-2 font-medium text-sm transition-colors
-                  ${activeTab === 'requests'
-                    ? 'border-purple-600 text-purple-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }
-                `}
-              >
-                طلبات المدارس
-              </button>
-              <button
-                onClick={() => setActiveTab('school-requests')}
-                className={`
-                  py-4 px-1 border-b-2 font-medium text-sm transition-colors
-                  ${activeTab === 'school-requests'
-                    ? 'border-purple-600 text-purple-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }
-                `}
-              >
-                طلبات المدارس (جديد)
-              </button>
-              <button
-                onClick={() => setActiveTab('couriers')}
-                className={`
-                  py-4 px-1 border-b-2 font-medium text-sm transition-colors
-                  ${activeTab === 'couriers'
-                    ? 'border-purple-600 text-purple-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }
-                `}
-              >
-                السائقين
-              </button>
-              <button
-                onClick={() => setActiveTab('shipments')}
-                className={`
-                  py-4 px-1 border-b-2 font-medium text-sm transition-colors
-                  ${activeTab === 'shipments'
-                    ? 'border-purple-600 text-purple-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }
-                `}
-              >
-                الشحنات الواردة
-              </button>
-              <button
-                onClick={() => setActiveTab('receive')}
-                className={`
-                  py-4 px-1 border-b-2 font-medium text-sm transition-colors
-                  ${activeTab === 'receive'
-                    ? 'border-purple-600 text-purple-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }
-                `}
-              >
-                استلام الشحنات
-              </button>
-            </nav>
+        {/* Notification Banners */}
+        <div className="space-y-3 mb-6">
+          <div className="bg-yellow-50 border-r-4 border-yellow-400 p-4 rounded-lg flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-yellow-600" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-yellow-800">نقص في كتب الرياضيات - مديرية بني الحارث</p>
+              <p className="text-xs text-yellow-700 mt-1">منذ ساعة</p>
+            </div>
+          </div>
+          
+          <div className="bg-red-50 border-r-4 border-red-400 p-4 rounded-lg flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-red-600" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-red-800">طلب عاجل من مدرسة الأندلس</p>
+              <p className="text-xs text-red-700 mt-1">منذ ساعتين</p>
+            </div>
+          </div>
+          
+          <div className="bg-green-50 border-r-4 border-green-400 p-4 rounded-lg flex items-center gap-3">
+            <Package className="w-5 h-5 text-green-600" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-green-800">اكتمال التوزيع لمن مديرية الوحدة</p>
+              <p className="text-xs text-green-700 mt-1">منذ 4 ساعات</p>
+            </div>
           </div>
         </div>
 
@@ -259,106 +168,124 @@ export function ProvinceDashboard() {
 
             {/* Quick Actions */}
             <div className="mb-8">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">الإجراءات السريعة</h2>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <h2 className="text-xl font-bold text-gray-900 mb-5">الإجراءات السريعة</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 {/* مخازن المحافظة */}
-                <Button 
-                  variant="outline" 
-                  className="h-auto py-4 justify-start"
+                <Button
+                  variant="outline"
+                  className="flex items-center gap-3 p-3 rounded-lg justify-start bg-white shadow-sm hover:shadow-md text-gray-700"
                   onClick={() => setActiveTab('warehouses')}
                 >
-                  <Building2 className="ml-2 w-5 h-5" />
-                  مخازن المحافظة
+                  <div className="bg-purple-50 p-2 rounded-md">
+                    <Building2 className="w-5 h-5 text-purple-600" />
+                  </div>
+                  <span className="font-medium">مخازن المحافظة</span>
                 </Button>
-                
+
                 {/* طلبات الكتب للوزارة */}
-                <Button 
-                  variant="outline" 
-                  className="h-auto py-4 justify-start"
+                <Button
+                  variant="outline"
+                  className="flex items-center gap-3 p-3 rounded-lg justify-start bg-white shadow-sm hover:shadow-md text-gray-700"
                   onClick={() => navigate('/province/book-requests')}
                 >
-                  <FileText className="ml-2 w-5 h-5" />
-                  طلبات الكتب
+                  <div className="bg-cyan-50 p-2 rounded-md">
+                    <FileText className="w-5 h-5 text-cyan-600" />
+                  </div>
+                  <span className="font-medium">طلبات الكتب</span>
                 </Button>
-                
+
                 {/* طلبات المدارس */}
-                <Button 
-                  variant="outline" 
-                  className="h-auto py-4 justify-start"
+                <Button
+                  variant="outline"
+                  className="flex items-center gap-3 p-3 rounded-lg justify-start bg-white shadow-sm hover:shadow-md text-gray-700"
                   onClick={() => setActiveTab('school-requests')}
                 >
-                  <School className="ml-2 w-5 h-5" />
-                  طلبات المدارس
+                  <div className="bg-orange-50 p-2 rounded-md">
+                    <School className="w-5 h-5 text-orange-600" />
+                  </div>
+                  <span className="font-medium">طلبات المدارس</span>
                 </Button>
-                
+
                 {/* إدخال الكتب */}
-                <Button 
-                  variant="outline" 
-                  className="h-auto py-4 justify-start"
+                <Button
+                  variant="outline"
+                  className="flex items-center gap-3 p-3 rounded-lg justify-start bg-white shadow-sm hover:shadow-md text-gray-700"
                   onClick={() => navigate('/province/stock-entry')}
                 >
-                  <Package className="ml-2 w-5 h-5" />
-                  إدخال الكتب
+                  <div className="bg-emerald-50 p-2 rounded-md">
+                    <Package className="w-5 h-5 text-emerald-600" />
+                  </div>
+                  <span className="font-medium">إدخال الكتب</span>
                 </Button>
               </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
-                {/* إنشاء شحنة */}
-                <Button 
-                  variant="outline" 
-                  className="h-auto py-4 justify-start"
-                  onClick={() => setActiveTab('shipments')}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+                {/* إدارة الشحنات */}
+                <Button
+                  variant="outline"
+                  className="flex items-center gap-3 p-3 rounded-lg justify-start bg-white shadow-sm hover:shadow-md text-gray-700"
+                  onClick={() => navigate('/province/shipments')}
                 >
-                  <TruckIcon className="ml-2 w-5 h-5" />
-                  إنشاء شحنة
+                  <div className="bg-blue-50 p-2 rounded-md">
+                    <TruckIcon className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <span className="font-medium">إدارة الشحنات</span>
                 </Button>
-                
-                {/* إدارة المدارس */}
-                <Button 
-                  variant="outline" 
-                  className="h-auto py-4 justify-start"
-                  onClick={() => navigate('/province/schools')}
+
+                {/* إنشاء شحنات من طلبات المدارس */}
+                <Button
+                  variant="outline"
+                  className="flex items-center gap-3 p-3 rounded-lg justify-start bg-white shadow-sm hover:shadow-md text-gray-700"
+                  onClick={() => navigate('/province/shipments/create')}
                 >
-                  <School className="ml-2 w-5 h-5" />
-                  إدارة المدارس
+                  <div className="bg-green-50 p-2 rounded-md">
+                    <Package className="w-5 h-5 text-green-600" />
+                  </div>
+                  <span className="font-medium">إنشاء شحنات</span>
                 </Button>
-                
-                {/* شحنات صادرة */}
-                <Button 
-                  variant="outline" 
-                  className="h-auto py-4 justify-start"
-                  onClick={() => navigate('/province/outgoing-shipments')}
+
+                {/* تتبع الشحنات */}
+                <Button
+                  variant="outline"
+                  className="flex items-center gap-3 p-3 rounded-lg justify-start bg-white shadow-sm hover:shadow-md text-gray-700"
+                  onClick={() => navigate('/province/track-shipments')}
                 >
-                  <TruckIcon className="ml-2 w-5 h-5" />
-                  شحنات صادرة
+                  <div className="bg-violet-50 p-2 rounded-md">
+                    <Package className="w-5 h-5 text-violet-600" />
+                  </div>
+                  <span className="font-medium">تتبع الشحنات</span>
                 </Button>
-                
-                {/* شحنات واردة */}
-                <Button 
-                  variant="outline" 
-                  className="h-auto py-4 justify-start"
-                  onClick={() => navigate('/province/incoming-shipments')}
+
+                {/* التقارير */}
+                <Button
+                  variant="outline"
+                  className="flex items-center gap-3 p-3 rounded-lg justify-start bg-white shadow-sm hover:shadow-md text-gray-700"
+                  onClick={() => navigate('/province/reports')}
                 >
-                  <Package className="ml-2 w-5 h-5" />
-                  شحنات واردة
+                  <div className="bg-sky-50 p-2 rounded-md">
+                    <BarChart3 className="w-5 h-5 text-sky-600" />
+                  </div>
+                  <span className="font-medium">التقارير</span>
                 </Button>
-                
+
                 {/* مناديب التوصيل */}
-                <Button 
-                  variant="outline" 
-                  className="h-auto py-4 justify-start"
+                <Button
+                  variant="outline"
+                  className="flex items-center gap-3 p-3 rounded-lg justify-start bg-white shadow-sm hover:shadow-md text-gray-700"
                   onClick={() => navigate('/province/couriers')}
                 >
-                  <Users className="ml-2 w-5 h-5" />
-                  مناديب التوصيل
+                  <div className="bg-indigo-50 p-2 rounded-md">
+                    <Users className="w-5 h-5 text-indigo-600" />
+                  </div>
+                  <span className="font-medium">مناديب التوصيل</span>
                 </Button>
               </div>
             </div>
 
             {/* Statistics Cards */}
             <div className="mb-8">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-semibold text-gray-900">نظرة عامة</h2>
+              <div className="flex justify-between items-center mb-5">
+                <h2 className="text-xl font-bold text-gray-900">نظرة عامة</h2>
                 <Button variant="ghost" size="sm" onClick={fetchStats} disabled={loading}>
                   {loading ? (
                     <Loader2 className="w-4 h-4 animate-spin ml-2" />
@@ -371,76 +298,98 @@ export function ProvinceDashboard() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 {/* عدد المخازن */}
-                <Card className="hover:shadow-lg transition-shadow">
+                <Card className="hover:shadow-lg transition-shadow min-h-[120px] flex flex-col justify-between p-4">
                   <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium text-gray-600">
-                      المخازن
-                    </CardTitle>
-                    <Building2 className="w-8 h-8 text-purple-600" />
-                  </CardHeader>
+                      <CardTitle className="text-sm font-medium text-gray-600 flex items-center gap-3">
+                        <span className="inline-flex items-center justify-center w-8 h-8 rounded-md bg-purple-50">
+                          <Building2 className="w-5 h-5 text-purple-600" />
+                        </span>
+                        المخازن
+                      </CardTitle>
+                    </CardHeader>
                   <CardContent>
                     <div className="text-3xl font-bold text-gray-900">
                       {stats?.province_info.warehouses_count || 0}
                     </div>
-                    <p className="text-xs text-gray-600 mt-1">مخزن</p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <p className="text-xs text-gray-600">مخزن</p>
+                      <span className="text-xs text-green-600 font-medium">↗ 4.3%</span>
+                    </div>
                   </CardContent>
                 </Card>
 
                 {/* الكتب في المخزون */}
-                <Card className="hover:shadow-lg transition-shadow">
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium text-gray-600">
+                <Card className="hover:shadow-lg transition-shadow min-h-[120px] flex flex-col justify-between p-4">
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-sm font-medium text-gray-600 flex items-center gap-3">
+                      <span className="inline-flex items-center justify-center w-8 h-8 rounded-md bg-green-50">
+                        <BookOpen className="w-5 h-5 text-green-600" />
+                      </span>
                       المخزون الحالي
                     </CardTitle>
-                    <BookOpen className="w-8 h-8 text-green-600" />
                   </CardHeader>
-                  <CardContent>
+                    <CardContent>
                     <div className="text-3xl font-bold text-gray-900">
-                      {stats?.stock.total_books || 0}
+                      {stats?.stock?.total_books || 0}
                     </div>
-                    <p className="text-xs text-gray-600 mt-1">كتاب</p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <p className="text-xs text-gray-600">كتاب</p>
+                      <span className="text-xs text-green-600 font-medium">↗ 2.1%</span>
+                    </div>
                   </CardContent>
                 </Card>
 
                 {/* مخزون منخفض */}
-                <Card className="hover:shadow-lg transition-shadow">
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium text-gray-600">
+                <Card className="hover:shadow-lg transition-shadow min-h-[120px] flex flex-col justify-between p-4">
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-sm font-medium text-gray-600 flex items-center gap-3">
+                      <span className="inline-flex items-center justify-center w-8 h-8 rounded-md bg-yellow-50">
+                        <AlertTriangle className="w-5 h-5 text-yellow-600" />
+                      </span>
                       تنبيه مخزون منخفض
                     </CardTitle>
-                    <AlertTriangle className="w-8 h-8 text-yellow-600" />
                   </CardHeader>
-                  <CardContent>
+                    <CardContent>
                     <div className="text-3xl font-bold text-gray-900">
                       {stats?.stock.low_stock_items || 0}
                     </div>
-                    <p className="text-xs text-gray-600 mt-1">صنف يحتاج إعادة تموين</p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <p className="text-xs text-gray-600">صنف يحتاج إعادة تموين</p>
+                      <span className="text-xs text-green-600 font-medium">↗ 100%</span>
+                    </div>
                   </CardContent>
                 </Card>
 
                 {/* الشحنات الواردة */}
-                <Card className="hover:shadow-lg transition-shadow">
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium text-gray-600">
+                <Card className="hover:shadow-lg transition-shadow min-h-[120px] flex flex-col justify-between p-4">
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-sm font-medium text-gray-600 flex items-center gap-3">
+                      <span className="inline-flex items-center justify-center w-8 h-8 rounded-md bg-blue-50">
+                        <TruckIcon className="w-5 h-5 text-blue-600" />
+                      </span>
                       الشحنات الواردة
                     </CardTitle>
-                    <TruckIcon className="w-8 h-8 text-blue-600" />
                   </CardHeader>
-                  <CardContent>
+                    <CardContent>
                     <div className="text-3xl font-bold text-gray-900">
                       {stats?.incoming_shipments.total || 0}
                     </div>
-                    <p className="text-xs text-gray-600 mt-1">شحنة</p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <p className="text-xs text-gray-600">شحنة</p>
+                      <span className="text-xs text-green-600 font-medium">↗ 8.2%</span>
+                    </div>
                   </CardContent>
                 </Card>
 
                 {/* شحنات معلقة */}
-                <Card className="hover:shadow-lg transition-shadow">
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium text-gray-600">
+                <Card className="hover:shadow-lg transition-shadow min-h-[120px] flex flex-col justify-between p-4">
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-sm font-medium text-gray-600 flex items-center gap-3">
+                      <span className="inline-flex items-center justify-center w-8 h-8 rounded-md bg-orange-50">
+                        <Package className="w-5 h-5 text-orange-600" />
+                      </span>
                       شحنات قيد التسليم
                     </CardTitle>
-                    <Package className="w-8 h-8 text-orange-600" />
                   </CardHeader>
                   <CardContent>
                     <div className="text-3xl font-bold text-gray-900">
@@ -451,12 +400,14 @@ export function ProvinceDashboard() {
                 </Card>
 
                 {/* شحنات مستلمة */}
-                <Card className="hover:shadow-lg transition-shadow">
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium text-gray-600">
+                <Card className="hover:shadow-lg transition-shadow min-h-[120px] flex flex-col justify-between p-4">
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-sm font-medium text-gray-600 flex items-center gap-3">
+                      <span className="inline-flex items-center justify-center w-8 h-8 rounded-md bg-emerald-50">
+                        <TruckIcon className="w-5 h-5 text-green-600" />
+                      </span>
                       شحنات مستلمة
                     </CardTitle>
-                    <TruckIcon className="w-8 h-8 text-green-600" />
                   </CardHeader>
                   <CardContent>
                     <div className="text-3xl font-bold text-gray-900">
@@ -467,12 +418,14 @@ export function ProvinceDashboard() {
                 </Card>
 
                 {/* السائقون */}
-                <Card className="hover:shadow-lg transition-shadow">
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium text-gray-600">
+                <Card className="hover:shadow-lg transition-shadow min-h-[120px] flex flex-col justify-between p-4">
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-sm font-medium text-gray-600 flex items-center gap-3">
+                      <span className="inline-flex items-center justify-center w-8 h-8 rounded-md bg-indigo-50">
+                        <Users className="w-5 h-5 text-indigo-600" />
+                      </span>
                       السائقون النشطون
                     </CardTitle>
-                    <Users className="w-8 h-8 text-indigo-600" />
                   </CardHeader>
                   <CardContent>
                     <div className="text-3xl font-bold text-gray-900">
@@ -483,12 +436,14 @@ export function ProvinceDashboard() {
                 </Card>
 
                 {/* طلبات المدارس */}
-                <Card className="hover:shadow-lg transition-shadow">
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium text-gray-600">
+                <Card className="hover:shadow-lg transition-shadow min-h-[120px] flex flex-col justify-between p-4">
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-sm font-medium text-gray-600 flex items-center gap-3">
+                      <span className="inline-flex items-center justify-center w-8 h-8 rounded-md bg-red-50">
+                        <School className="w-5 h-5 text-red-600" />
+                      </span>
                       طلبات المدارس المعلقة
                     </CardTitle>
-                    <School className="w-8 h-8 text-red-600" />
                   </CardHeader>
                   <CardContent>
                     <div className="text-3xl font-bold text-gray-900">
@@ -507,8 +462,33 @@ export function ProvinceDashboard() {
                 <CardDescription>آخر العمليات في المحافظة</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="text-center py-8 text-gray-500">
-                  <p>قريباً: عرض آخر العمليات والتحديثات</p>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                    <Package className="w-5 h-5 text-blue-600" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">شحنة جديدة</p>
+                      <p className="text-xs text-gray-600">تم إنشاء شحنة إلى مدرسة الأمل - قبل 10 دقائق</p>
+                    </div>
+                    <span className="text-xs text-gray-500">10m</span>
+                  </div>
+
+                  <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                    <TruckIcon className="w-5 h-5 text-purple-600" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">شحنة قيد التوصيل</p>
+                      <p className="text-xs text-gray-600">رقم الشحنة #452 - السائق استلمه</p>
+                    </div>
+                    <span className="text-xs text-gray-500">1h</span>
+                  </div>
+
+                  <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                    <Users className="w-5 h-5 text-indigo-600" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">مناديب نشطون</p>
+                      <p className="text-xs text-gray-600">3 مناديب متاحون للتسليم الآن</p>
+                    </div>
+                    <span className="text-xs text-gray-500">Now</span>
+                  </div>
                 </div>
               </CardContent>
             </Card>

@@ -159,7 +159,7 @@ DATABASES = {
         "NAME": os.getenv("POSTGRES_DB", "pgsql"),
         "USER": os.getenv("POSTGRES_USER", "pgsql"),
         "PASSWORD": os.getenv("POSTGRES_PASSWORD", "pgsql"),
-        "HOST": os.getenv("POSTGRES_HOST", "db"),   # اسم الخدمة داخل Docker
+        "HOST": os.getenv("POSTGRES_HOST", "localhost"),   # localhost for local development
         "PORT": os.getenv("POSTGRES_PORT", "5432"),
         "CONN_MAX_AGE": 60,
     }
@@ -172,7 +172,7 @@ DATABASES = {
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": os.getenv("REDIS_URL", "redis://redis:6379/1"),
+        "LOCATION": os.getenv("REDIS_URL", "redis://localhost:6379/1"),
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
             "SOCKET_CONNECT_TIMEOUT": 5,
@@ -247,6 +247,20 @@ CSRF_TRUSTED_ORIGINS = os.getenv(
     'CSRF_TRUSTED_ORIGINS',
     'http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000'
 ).split(',')
+
+# Prevent Django from redirecting POST requests to slash-terminated URLs
+# Some clients (mobile/web apps) post to endpoints without trailing slash.
+APPEND_SLASH = False
+
+# Add common local web debug ports to trusted origins for CSRF (useful for Flutter web)
+additional_csrf_origins = [
+    'http://localhost:53995',
+    'http://127.0.0.1:53995',
+    'http://192.168.105.69:53995',
+]
+for origin in additional_csrf_origins:
+    if origin not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS.append(origin)
 
 # ==============================
 # 📋 Celery Settings

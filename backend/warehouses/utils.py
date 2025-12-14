@@ -13,10 +13,9 @@ from django.conf import settings
 MEDIA_ROOT = getattr(settings, "MEDIA_ROOT", os.path.join(settings.BASE_DIR, "data"))
 QR_DIR = os.path.join(MEDIA_ROOT, "qr", "shipments")
 PDF_DIR = os.path.join(MEDIA_ROOT, "pdf", "shipments")
-os.makedirs(QR_DIR, exist_ok=True)
-os.makedirs(PDF_DIR, exist_ok=True)
 
-def ensure_dirs() -> None:
+# Create directories lazily to avoid permission errors during import
+def _ensure_dirs():
     """تأكّد من وجود مجلدات التخزين."""
     os.makedirs(QR_DIR, exist_ok=True)
     os.makedirs(PDF_DIR, exist_ok=True)
@@ -77,7 +76,7 @@ def save_qr_png_for_shipment(shipment, png_bytes: bytes) -> str:
     Returns:
         str: المسار النسبي للملف (مناسب للتخزين في قاعدة البيانات)
     """
-    ensure_dirs()
+    _ensure_dirs()
     filename = f"shipment_{shipment.id}.png"
     fullpath = os.path.join(QR_DIR, filename)
     with open(fullpath, "wb") as f:

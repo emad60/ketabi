@@ -77,11 +77,21 @@ export function CreateShipmentFromRequestDialog({
       });
       setProvinceWarehouses(provinceRes.data.results || provinceRes.data || []);
 
-      // Load ministry couriers
-      const couriersRes = await api.get('/users/', {
-        params: { role: 'ministry_courier', page_size: 100 }
-      });
-      setCouriers(couriersRes.data.results || couriersRes.data || []);
+      // Load ministry couriers - using a different approach
+      try {
+        const couriersRes = await api.get('/users/', {
+          params: { page_size: 100 }
+        });
+        const allUsers = couriersRes.data.results || couriersRes.data || [];
+        // Filter couriers on frontend
+        const ministryCouriers = allUsers.filter((u: any) => 
+          u.role === 'ministry_courier' || u.role === 'ministry_driver'
+        );
+        setCouriers(ministryCouriers);
+      } catch (courierError) {
+        console.warn('Could not load couriers, continuing without them:', courierError);
+        setCouriers([]);
+      }
     } catch (error) {
       console.error('Error loading data:', error);
     }
@@ -89,9 +99,6 @@ export function CreateShipmentFromRequestDialog({
 
   const prepareBooks = () => {
     if (!request?.items) return;
-
-    console.log('[DEBUG] Request items:', request.items);
-    console.log('[DEBUG] Approved items:', approvedItems);
 
     // Map approved items to book items format
     const bookItems: BookItem[] = request.items
@@ -101,16 +108,8 @@ export function CreateShipmentFromRequestDialog({
 
         // Extract book_id from various possible locations
         const bookId = item.book_id || item.book?.id || item.book;
-        
-        console.log('[DEBUG] Processing item:', {
-          itemId: item.id,
-          rawItem: item,
-          extractedBookId: bookId,
-          approvedQty: approvedItem.approved_quantity
-        });
 
         if (!bookId) {
-          console.error('[DEBUG] No book_id found for item:', item);
           return null;
         }
 
@@ -124,7 +123,6 @@ export function CreateShipmentFromRequestDialog({
       })
       .filter(Boolean) as BookItem[];
 
-    console.log('[DEBUG] Prepared books:', bookItems);
     setBooks(bookItems);
   };
 
@@ -168,8 +166,6 @@ export function CreateShipmentFromRequestDialog({
         payload.status = 'assigned'; // تغيير الحالة إلى مُسندة
       }
 
-      console.log('Creating shipment from request:', payload);
-      console.log('Payload stringified:', JSON.stringify(payload, null, 2));
       const response = await api.post('/warehouses/shipments/', payload);
       
       // عرض تفاصيل الشحنة المنشأة
@@ -192,12 +188,26 @@ export function CreateShipmentFromRequestDialog({
       
       // إنشاء إشعار للمحافظة
       try {
-        await api.post('/notifications/', {
-          title: 'شحنة واردة جديدة',
-          message: `تم إرسال شحنة جديدة من الوزارة - رقم الشحنة: ${shipmentData.id}\nعدد الكتب: ${books.length} نوع\nالمستودع: ${shipmentData.to_province_name}`,
-          notification_type: 'shipment',
-          related_object_id: shipmentData.id,
+        // Get province admin for this request
+        const provinceAdminRes = await api.get('/users/', {
+          params: { page_size: 100 }
         });
+        const allUsers = provinceAdminRes.data.results || provinceAdminRes.data || [];
+        // Filter by role and province
+        const provinceAdmins = allUsers.filter((u: any) => 
+          u.role === 'province_admin' && u.province === request.province
+        );
+        
+        if (provinceAdmins.length > 0) {
+          const provinceAdmin = provinceAdmins[0];
+          await api.post('/notifications/', {
+            user: provinceAdmin.id,
+            title: 'شحنة واردة جديدة',
+            message: `تم إرسال شحنة جديدة من الوزارة - رقم الشحنة: ${shipmentData.id}\nعدد الكتب: ${books.length} نوع\nالمستودع: ${shipmentData.to_province_name}`,
+            notification_type: 'shipment',
+            related_object_id: shipmentData.id,
+          });
+        }
       } catch (notifError) {
         console.warn('Failed to create notification:', notifError);
       }
@@ -336,7 +346,9 @@ export function CreateShipmentFromRequestDialog({
                 <SelectValue placeholder="اختر مندوب التوصيل" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">بدون مندوب (يمكن الإسناد لاحقاً)</SelectItem>
+                {!formData.assigned_courier && (
+                  <SelectItem value="none">بدون مندوب (يمكن الإسناد لاحقاً)</SelectItem>
+                )}
                 {couriers.map(courier => (
                   <SelectItem key={courier.id} value={courier.id.toString()}>
                     {courier.full_name || courier.username} - {courier.phone || 'لا يوجد رقم'}

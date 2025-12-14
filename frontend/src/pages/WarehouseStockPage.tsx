@@ -24,10 +24,11 @@ interface Book {
   subject: string;
   grade_level: string;
   term: number;
-  title: string;
   subject_display: string;
   grade_display: string;
   term_display: string;
+  edition?: string;
+  year?: number;
 }
 
 interface StockItem {
@@ -85,8 +86,11 @@ export function WarehouseStockPage() {
 
   const fetchBooks = async () => {
     try {
-      const response = await api.get('/books/');
+      const response = await api.get('/books/', {
+        params: { page_size: 1000 }
+      });
       const data = response.data.results || response.data;
+      console.log('📚 Fetched books:', data);
       setBooks(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Error fetching books:', err);
@@ -272,7 +276,7 @@ export function WarehouseStockPage() {
                       <option value="">اختر كتاب...</option>
                       {books.map(book => (
                         <option key={book.id} value={book.id}>
-                          {book.title}
+                          {book.subject_display} - {book.grade_display} - {book.term_display}
                         </option>
                       ))}
                     </select>
@@ -297,7 +301,7 @@ export function WarehouseStockPage() {
                       id="quantity"
                       type="number"
                       value={formData.quantity}
-                      onChange={(e) => setFormData({...formData, quantity: parseInt(e.target.value)})}
+                      onChange={(e) => setFormData({...formData, quantity: parseInt(e.target.value) || 0})}
                       min="0"
                       required
                       className="text-right"
@@ -309,7 +313,7 @@ export function WarehouseStockPage() {
                       id="min_threshold"
                       type="number"
                       value={formData.min_threshold}
-                      onChange={(e) => setFormData({...formData, min_threshold: parseInt(e.target.value)})}
+                      onChange={(e) => setFormData({...formData, min_threshold: parseInt(e.target.value) || 0})}
                       min="0"
                       required
                       className="text-right"

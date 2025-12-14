@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -54,6 +54,39 @@ export function ShipmentDetailsDialog({ open, onClose, shipment, onStatusChange 
   const [downloadingQR, setDownloadingQR] = useState(false);
   const [downloadingReport, setDownloadingReport] = useState(false);
   const [changingStatus, setChangingStatus] = useState(false);
+  const [qrUrl, setQrUrl] = useState<string | null>(null);
+  // Load QR image via authenticated API and convert to object URL
+  // Keep this effect unconditional (hook order stable) but guard inside for missing shipment
+  useEffect(() => {
+    let active = true;
+    let objectUrl: string | null = null;
+
+    const loadQr = async () => {
+      if (!shipment?.id) return;
+      try {
+        const res = await api.get(`/warehouses/shipments/${shipment.id}/qr/`, {
+          responseType: 'blob',
+        });
+        if (!active) return;
+        const blob = new Blob([res.data], { type: res.data.type || 'image/png' });
+        objectUrl = window.URL.createObjectURL(blob);
+        setQrUrl(objectUrl);
+      } catch (err) {
+        console.warn('Could not load shipment QR via authenticated API', err);
+        setQrUrl(null);
+      }
+    };
+
+    loadQr();
+
+    return () => {
+      active = false;
+      if (objectUrl) {
+        window.URL.revokeObjectURL(objectUrl);
+      }
+      setQrUrl(null);
+    };
+  }, [shipment?.id]);
 
   if (!shipment) return null;
 
@@ -79,13 +112,19 @@ export function ShipmentDetailsDialog({ open, onClose, shipment, onStatusChange 
   const handleDownloadQR = async () => {
     try {
       setDownloadingQR(true);
-      // Download QR code image
+      // Fetch QR image via authenticated api client and download
+      const res = await api.get(`/warehouses/shipments/${shipment.id}/qr/`, {
+        responseType: 'blob',
+      });
+      const blob = new Blob([res.data], { type: res.data.type || 'image/png' });
       const link = document.createElement('a');
-      link.href = `http://localhost:8000/api/warehouses/shipments/${shipment.id}/qr/`;
+      const url = window.URL.createObjectURL(blob);
+      link.href = url;
       link.download = `shipment-${shipment.tracking_code}-qr.png`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Error downloading QR:', error);
       alert('حدث خطأ أثناء تحميل QR Code');
@@ -168,12 +207,9 @@ export function ShipmentDetailsDialog({ open, onClose, shipment, onStatusChange 
                 <h3 className="text-lg font-semibold mb-4">QR Code للشحنة</h3>
                 <div className="inline-block p-4 bg-white border-2 border-gray-200 rounded-lg">
                   <img
-                    src={`http://localhost:8000/api/warehouses/shipments/${shipment.id}/qr/`}
+                    src={qrUrl || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="200"%3E%3Crect fill="%23f0f0f0" width="200" height="200"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%23999"%3EQR Code%3C/text%3E%3C/svg%3E'}
                     alt="Shipment QR Code"
                     className="w-48 h-48"
-                    onError={(e) => {
-                      e.currentTarget.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="200"%3E%3Crect fill="%23f0f0f0" width="200" height="200"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%23999"%3EQR Code%3C/text%3E%3C/svg%3E';
-                    }}
                   />
                 </div>
                 <p className="mt-3 text-sm text-gray-600">كود التتبع: {shipment.tracking_code}</p>

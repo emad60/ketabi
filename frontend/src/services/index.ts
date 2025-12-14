@@ -4,6 +4,7 @@
  */
 
 export { default as api } from './api';
+export { apiService } from './apiService';
 export { authService } from './authService';
 export { statisticsService } from './statisticsService';
 export { warehouseService } from './warehouseService';

@@ -1,10 +1,25 @@
 /**
- * Axios Instance with Interceptors
+ * Advanced API Service
+ * خدمات متقدمة لربط جميع عمليات النظام مع Backend
  * يتضمن: JWT Token handling, Auto-refresh, Error handling
  */
 
-import axios, { AxiosError, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
+import axios, { AxiosError, AxiosRequestConfig, InternalAxiosRequestConfig, AxiosInstance } from 'axios';
 import { API_CONFIG } from '../config/api';
+
+export interface PaginatedResponse<T> {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: T[];
+}
+
+export interface ApiResponse<T> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  message?: string;
+}
 
 // Create axios instance
 const api = axios.create({

@@ -1,10 +1,19 @@
+import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
 import { LoginPage } from './pages/LoginPage';
 import { LogoutPage } from './pages/LogoutPage';
 import { MinistryDashboard } from './pages/MinistryDashboard';
 import { ProvinceDashboard } from './pages/ProvinceDashboard';
+import { MinistryDashboardAdvanced } from './pages/MinistryDashboardAdvanced';
+import ProvinceDashboardAdvanced from './pages/ProvinceDashboardAdvanced';
+import ProvinceIncomingSchoolRequestsPage from './pages/ProvinceIncomingSchoolRequestsPage';
+import ProvinceShipmentPage from './pages/ProvinceShipmentPage';
+import ShipmentDetailPage from './pages/ShipmentDetailPage';
+import { MinistryProvinceRequestsPage as MinistryProvinceRequestsPageNew } from './pages/MinistryProvinceRequestsPage';
+import { MinistryProvincesManagementPage } from './pages/MinistryProvincesManagementPage';
 import { MinistryWarehousesPage } from './pages/MinistryWarehousesPage';
+import { ProvinceWarehousesPage } from './pages/ProvinceWarehousesPage';
 import { WarehouseStockPage } from './pages/WarehouseStockPage';
 import { ShipmentsPage } from './pages/ShipmentsPage';
 import { MinistryShipmentManagementPage } from './components/MinistryShipmentManagementPage';
@@ -18,7 +27,13 @@ import { ReportsPage } from './components/ReportsPage';
 import { StockEntryPage } from './components/StockEntryPage';
 import { ShipmentsPage as ShipmentsListPage } from './components/ShipmentsPage';
 import { CouriersManagementPage } from './components/CouriersManagementPage';
+import { CreateRequestPage } from './pages/CreateRequestPage';
+import ProvinceCreateBookRequestPage from './pages/ProvinceCreateBookRequestPage';
+import { TrackShipmentsPage } from './pages/TrackShipmentsPage';
+import { ReportsPage as ReportsPageNew } from './pages/ReportsPage';
 import './App.css';
+
+const NotificationsPage = React.lazy(() => import('./pages/NotificationsPage'));
 
 /**
  * Protected Route Component
@@ -38,9 +53,7 @@ function ProtectedRoute({
   }
 
   // Admin has access to everything
-  if (user?.role === 'admin') {
-    return <>{children}</>;
-  }
+
 
   if (allowedRoles.length > 0 && user && !allowedRoles.includes(user.role)) {
     return <Navigate to="/unauthorized" replace />;
@@ -57,24 +70,27 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, user } = useAuthStore();
 
   // فقط نتحقق من isAuthenticated بدون التحقق من user لتجنب الحلقة
+
   if (isAuthenticated) {
-    // إذا لم يكن هناك user، ننتظر قليلاً قبل إعادة التوجيه
     if (!user) {
       return <>{children}</>;
     }
-    
-    // توجيه حسب الدور
     const role = user.role;
-    if (role === 'ministry_admin' || role === 'ministry_staff' || role === 'ministry_warehouse') {
+    if ([
+      'ministry_admin', 'ministry_staff', 'ministry_warehouse'
+    ].includes(role)) {
       return <Navigate to="/ministry/dashboard" replace />;
-    } else if (role === 'province_admin' || role === 'province_staff' || role === 'province_warehouse') {
+    } else if ([
+      'province_admin', 'province_staff', 'province_warehouse'
+    ].includes(role)) {
       return <Navigate to="/province/dashboard" replace />;
     } else if (role === 'warehouse_manager') {
       return <Navigate to="/warehouse/dashboard" replace />;
-    } else if (role === 'driver' || role === 'ministry_driver' || role === 'province_driver') {
+    } else if ([
+      'driver', 'ministry_driver', 'province_driver'
+    ].includes(role)) {
       return <Navigate to="/ministry/dashboard" replace />;
     }
-    // Default: redirect to ministry dashboard
     return <Navigate to="/ministry/dashboard" replace />;
   }
 
@@ -101,7 +117,7 @@ export default function App() {
         path="/ministry/dashboard"
         element={
           <ProtectedRoute allowedRoles={['ministry_admin', 'ministry_staff']}>
-            <MinistryDashboard />
+            <MinistryDashboardAdvanced />
           </ProtectedRoute>
         }
       />
@@ -165,7 +181,7 @@ export default function App() {
         path="/ministry/provinces"
         element={
           <ProtectedRoute allowedRoles={['ministry_admin', 'ministry_staff']}>
-            <div className="p-8 text-center">قريباً: إدارة المحافظات</div>
+            <MinistryProvincesManagementPage />
           </ProtectedRoute>
         }
       />
@@ -181,7 +197,17 @@ export default function App() {
         path="/ministry/province-requests"
         element={
           <ProtectedRoute allowedRoles={['ministry_admin', 'ministry_staff']}>
-            <MinistryProvinceRequestsPageV2 />
+            <MinistryProvinceRequestsPageNew />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/notifications"
+        element={
+          <ProtectedRoute>
+            <React.Suspense fallback={<div>جاري التحميل...</div>}>
+              <NotificationsPage />
+            </React.Suspense>
           </ProtectedRoute>
         }
       />
@@ -197,7 +223,39 @@ export default function App() {
         path="/ministry/reports"
         element={
           <ProtectedRoute allowedRoles={['ministry_admin', 'ministry_staff']}>
-            <ReportsPage />
+            <ReportsPageNew />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/ministry/create-request"
+        element={
+          <ProtectedRoute allowedRoles={['ministry_admin', 'ministry_staff']}>
+            <CreateRequestPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/ministry/track-shipments"
+        element={
+          <ProtectedRoute allowedRoles={['ministry_admin', 'ministry_staff']}>
+            <TrackShipmentsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/ministry/school-requests"
+        element={
+          <ProtectedRoute allowedRoles={['ministry_admin', 'ministry_staff']}>
+            <SchoolManagementPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/ministry/shipments"
+        element={
+          <ProtectedRoute allowedRoles={['ministry_admin', 'ministry_staff']}>
+            <MinistryShipmentManagementPage />
           </ProtectedRoute>
         }
       />
@@ -208,6 +266,22 @@ export default function App() {
         element={
           <ProtectedRoute allowedRoles={['province_admin', 'province_staff']}>
             <ProvinceDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/province/advanced-dashboard"
+        element={
+          <ProtectedRoute allowedRoles={['province_admin', 'province_staff']}>
+            <ProvinceWarehousesPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/province/warehouses"
+        element={
+          <ProtectedRoute allowedRoles={['province_admin', 'province_staff']}>
+            <ProvinceWarehousesPage />
           </ProtectedRoute>
         }
       />
@@ -279,12 +353,61 @@ export default function App() {
         path="/province/reports"
         element={
           <ProtectedRoute allowedRoles={['province_admin', 'province_staff']}>
-            <ReportsPage />
+            <ReportsPageNew />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/province/create-request"
+        element={
+          <ProtectedRoute allowedRoles={['province_admin', 'province_staff']}>
+            <ProvinceCreateBookRequestPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/province/track-shipments"
+        element={
+          <ProtectedRoute allowedRoles={['province_admin', 'province_staff']}>
+            <TrackShipmentsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/province/school-requests"
+        element={
+          <ProtectedRoute allowedRoles={['province_admin', 'province_staff']}>
+            <ProvinceIncomingSchoolRequestsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/province/incoming-school-requests"
+        element={
+          <ProtectedRoute allowedRoles={['province_admin', 'province_staff']}>
+            <ProvinceIncomingSchoolRequestsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/province/shipments/create"
+        element={
+          <ProtectedRoute allowedRoles={['province_admin', 'province_staff']}>
+            <ProvinceShipmentPage />
           </ProtectedRoute>
         }
       />
 
       {/* Shared Routes - مسارات مشتركة */}
+      <Route
+        path="/shipments/:id"
+        element={
+          <ProtectedRoute allowedRoles={['ministry_admin', 'ministry_staff', 'province_admin', 'province_staff', 'warehouse_manager', 'ministry_warehouse', 'province_warehouse', 'driver']}>
+            <ShipmentDetailPage />
+          </ProtectedRoute>
+        }
+      />
+
       <Route
         path="/shipments/tracking"
         element={

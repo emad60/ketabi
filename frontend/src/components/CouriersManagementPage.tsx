@@ -62,6 +62,10 @@ export function CouriersManagementPage({ courierType }: CouriersManagementPagePr
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [couriers, setCouriers] = useState<Courier[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [showViewDialog, setShowViewDialog] = useState(false);
+  const [viewCourier, setViewCourier] = useState<Courier | null>(null);
   
   // Dialogs
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -81,6 +85,18 @@ export function CouriersManagementPage({ courierType }: CouriersManagementPagePr
   useEffect(() => {
     loadCouriers();
   }, []);
+
+  const filteredCouriers = couriers.filter(c => {
+    const matchesStatus = statusFilter === 'all' || (statusFilter === 'active' ? c.is_active : !c.is_active);
+    const q = searchTerm.trim().toLowerCase();
+    const matchesSearch = !q || (
+      (c.full_name || '').toLowerCase().includes(q) ||
+      (c.username || '').toLowerCase().includes(q) ||
+      (c.email || '').toLowerCase().includes(q) ||
+      (c.phone || '').toLowerCase().includes(q)
+    );
+    return matchesStatus && matchesSearch;
+  });
 
   const loadCouriers = async () => {
     try {
@@ -248,10 +264,26 @@ export function CouriersManagementPage({ courierType }: CouriersManagementPagePr
           </div>
         </div>
 
-        <Button onClick={handleAdd}>
+        <div className="flex items-center gap-3">
+          <Input value={searchTerm} onChange={(e:any)=>setSearchTerm(e.target.value)} placeholder="ابحث باسم أو بريد أو هاتف..." />
+          <Select value={statusFilter} onValueChange={(val:any)=>setStatusFilter(val)}>
+            <SelectTrigger>
+              <SelectValue placeholder="حالة" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">الكل</SelectItem>
+              <SelectItem value="active">نشط</SelectItem>
+              <SelectItem value="inactive">معطل</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button onClick={handleAdd}>
           <Plus className="w-4 h-4 ml-2" />
           إضافة مندوب
-        </Button>
+          </Button>
+        </div>
       </div>
 
       {/* Statistics */}
@@ -305,7 +337,7 @@ export function CouriersManagementPage({ courierType }: CouriersManagementPagePr
               <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto" />
               <p className="text-gray-600 mt-2">جاري التحميل...</p>
             </div>
-          ) : couriers.length === 0 ? (
+          ) : filteredCouriers.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <Users className="w-12 h-12 mx-auto mb-2 text-gray-400" />
               <p>لا يوجد مناديب</p>
@@ -325,7 +357,7 @@ export function CouriersManagementPage({ courierType }: CouriersManagementPagePr
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {couriers.map(courier => (
+                {filteredCouriers.map(courier => (
                   <TableRow key={courier.id}>
                     <TableCell className="font-medium">
                       {courier.full_name}
@@ -378,6 +410,13 @@ export function CouriersManagementPage({ courierType }: CouriersManagementPagePr
                         <Button
                           size="sm"
                           variant="outline"
+                          onClick={() => { setViewCourier(courier); setShowViewDialog(true); }}
+                        >
+                          عرض
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
                           onClick={() => handleEdit(courier)}
                         >
                           <Edit className="w-4 h-4" />
@@ -407,6 +446,54 @@ export function CouriersManagementPage({ courierType }: CouriersManagementPagePr
       </Card>
 
       {/* Add Dialog */}
+      {/* View Courier Dialog */}
+      <Dialog open={showViewDialog} onOpenChange={setShowViewDialog}>
+        <DialogContent className="max-w-md" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>تفاصيل المندوب</DialogTitle>
+            <DialogDescription>
+              {viewCourier?.full_name}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div>
+              <Label>الاسم</Label>
+              <div className="font-medium">{viewCourier?.full_name}</div>
+            </div>
+            <div>
+              <Label>اسم المستخدم</Label>
+              <div>{viewCourier?.username}</div>
+            </div>
+            <div>
+              <Label>البريد الإلكتروني</Label>
+              <div>{viewCourier?.email}</div>
+            </div>
+            <div>
+              <Label>الهاتف</Label>
+              <div>{viewCourier?.phone || '-'}</div>
+            </div>
+            {courierType === 'province' && (
+              <div>
+                <Label>المحافظة</Label>
+                <div>{viewCourier?.province || '-'}</div>
+              </div>
+            )}
+            <div>
+              <Label>الشحنات المعينة</Label>
+              <div>{viewCourier?.assigned_shipments_count || 0}</div>
+            </div>
+            <div>
+              <Label>الحالة</Label>
+              <div>{viewCourier?.is_active ? 'نشط' : 'معطل'}</div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowViewDialog(false)}>إغلاق</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
         <DialogContent className="max-w-md" dir="rtl">
           <DialogHeader>

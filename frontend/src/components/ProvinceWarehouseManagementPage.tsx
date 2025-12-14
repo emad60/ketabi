@@ -20,10 +20,9 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
-import { useAuthStore } from '../store/authStore';
+import api from '../services/api';
 
 export function ProvinceWarehouseManagementPage() {
-  const { token } = useAuthStore();
   const [loading, setLoading] = useState(true);
   const [warehouses, setWarehouses] = useState<any[]>([]);
 
@@ -33,16 +32,8 @@ export function ProvinceWarehouseManagementPage() {
 
   const fetchData = async () => {
     try {
-      const headers = {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      };
-
-      const response = await fetch('http://localhost:8000/api/warehouses/province/', {
-        headers,
-      });
-      const data = await response.json();
-      setWarehouses(Array.isArray(data) ? data : []);
+      const response = await api.get('/warehouses/province/');
+      setWarehouses(Array.isArray(response.data) ? response.data : (response.data.results || []));
       setLoading(false);
     } catch (error) {
       console.error('Error fetching warehouses:', error);

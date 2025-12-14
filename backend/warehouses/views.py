@@ -29,6 +29,8 @@ from schools.models import School
 from school_requests.models import SchoolRequest
 from book_requests.models import BookRequest
 from .reports import WarehouseReports, PDFReportGenerator
+from notifications.firebase_service import FirebaseService, notify_shipment_assigned
+from notifications.models import Notification
 
 
 class MinistryWarehouseViewSet(viewsets.ModelViewSet):
@@ -98,7 +100,53 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         logger.info(f"[SHIPMENT CREATE] Request data: {request.data}")
         
         try:
-            return super().create(request, *args, **kwargs)
+            response = super().create(request, *args, **kwargs)
+
+            # After successful creation, notify province staff about incoming shipment
+            try:
+                shipment_id = response.data.get('id') or response.data.get('pk') or response.data.get('ID')
+                if shipment_id:
+                    created_shipment = Shipment.objects.filter(pk=shipment_id).first()
+                    if created_shipment and created_shipment.to_province:
+                        # Create internal notifications for province staff
+                        for staff in created_shipment.to_province.staff.all():
+                            Notification.objects.create(
+                                user=staff,
+                                message=f"شحنة واردة من الوزارة: الشحنة #{created_shipment.id} - {created_shipment.tracking_code or ''}"
+                            )
+                            # Send push (if firebase configured)
+                            try:
+                                FirebaseService.send_to_user(
+                                    user=staff,
+                                    title="شحنة واردة",
+                                    body=f"ستصل شحنة جديدة للمنطقة: #{created_shipment.id}",
+                                    data={
+                                        'type': 'incoming_shipment',
+                                        'shipment_id': str(created_shipment.id)
+                                    }
+                                )
+                            except Exception:
+                                logger.exception('Failed to send push to province staff')
+
+            except Exception:
+                logger.exception('[SHIPMENT CREATE] Notification sending failed')
+
+            # If shipment was created with an assigned courier, notify the courier as well
+            try:
+                if created_shipment and created_shipment.assigned_courier:
+                    assigned = created_shipment.assigned_courier
+                    Notification.objects.create(
+                        user=assigned,
+                        message=f"تم إسناد الشحنة #{created_shipment.id} إليك. يرجى البدء بالإجراءات اللازمة."
+                    )
+                    try:
+                        notify_shipment_assigned(created_shipment)
+                    except Exception:
+                        logger.exception('Failed to notify assigned courier after create')
+            except Exception:
+                logger.exception('[SHIPMENT CREATE] Assigned courier notification failed')
+
+            return response
         except Exception as e:
             logger.error(f"[SHIPMENT CREATE ERROR] {type(e).__name__}: {str(e)}")
             logger.error(f"[SHIPMENT CREATE ERROR] Data: {request.data}")
@@ -143,6 +191,34 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         obj.assigned_courier_id = courier_id
         obj.status = "assigned"
         obj.save(update_fields=["assigned_courier_id", "status"])
+
+        # Create internal notification for assigned courier and send push
+        try:
+            assigned = obj.assigned_courier
+            if assigned:
+                Notification.objects.create(
+                    user=assigned,
+                    message=f"تم إسناد الشحنة #{obj.id} إليك. يرجى البدء بالإجراءات اللازمة."
+                )
+                # Push notification to courier
+                try:
+                    notify_shipment_assigned(obj)
+                except Exception:
+                    # fallback to direct FirebaseService
+                    try:
+                        FirebaseService.send_to_user(
+                            user=assigned,
+                            title="مهمة توصيل جديدة",
+                            body=f"تم إسناد الشحنة #{obj.id} إليك",
+                            data={'type': 'shipment_assigned', 'shipment_id': str(obj.id)}
+                        )
+                    except Exception:
+                        logger = __import__('logging').getLogger(__name__)
+                        logger.exception('Failed to send push to assigned courier')
+        except Exception:
+            logger = __import__('logging').getLogger(__name__)
+            logger.exception('Failed to create notification for assigned courier')
+
         return Response(self.get_serializer(obj).data)
 
     @action(detail=True, methods=["post"])

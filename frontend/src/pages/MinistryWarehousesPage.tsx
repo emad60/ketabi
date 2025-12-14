@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
+import DashboardTopNav from '../components/DashboardTopNav';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Alert, AlertDescription } from '../components/ui/alert';
@@ -54,6 +55,7 @@ export function MinistryWarehousesPage() {
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
+  const [activeTab, setActiveTab] = useState('warehouses');
   const [newWarehouse, setNewWarehouse] = useState({
     name: '',
     location: ''
@@ -69,8 +71,10 @@ export function MinistryWarehousesPage() {
   const fetchWarehouses = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/warehouses/ministry-warehouses/');
-      setWarehouses(response.data);
+      const response = await api.get('/warehouses/ministry/');
+      // Ensure warehouses is always an array
+      const data = Array.isArray(response.data) ? response.data : (response.data.results || []);
+      setWarehouses(data);
       setError('');
     } catch (err: any) {
       console.error('Error fetching warehouses:', err);
@@ -111,37 +115,31 @@ export function MinistryWarehousesPage() {
 
   return (
     <div className="min-h-screen bg-gray-50" dir="rtl">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-3">
-              <Button 
-                variant="ghost" 
-                size="sm"
-                onClick={() => navigate('/ministry/dashboard')}
-              >
-                <ArrowLeft className="w-4 h-4 ml-2" />
-                العودة
-              </Button>
-              <div className="bg-blue-600 p-2 rounded-lg">
-                <Building2 className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">مخازن الوزارة</h1>
-                <p className="text-sm text-gray-600">وزارة التربية والتعليم - الجمهورية اليمنية</p>
-              </div>
-            </div>
-            <Button onClick={() => setShowAddForm(!showAddForm)}>
-              <Plus className="w-4 h-4 ml-2" />
-              إضافة مخزن
-            </Button>
-          </div>
-        </div>
-      </header>
-
+      <DashboardTopNav 
+        activeTab={activeTab} 
+        onTabChange={setActiveTab}
+        role="ministry"
+      />
+      
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Page Header */}
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center gap-3">
+            <div className="bg-blue-600 p-3 rounded-lg">
+              <Building2 className="w-8 h-8 text-white" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">مخازن الوزارة</h1>
+              <p className="text-sm text-gray-600 mt-1">إدارة وتتبع مخازن الوزارة</p>
+            </div>
+          </div>
+          <Button onClick={() => setShowAddForm(!showAddForm)} size="lg">
+            <Plus className="w-5 h-5 ml-2" />
+            إضافة مخزن جديد
+          </Button>
+        </div>
+
         {error && (
           <Alert variant="destructive" className="mb-6">
             <AlertDescription>{error}</AlertDescription>

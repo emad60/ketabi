@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Alert, AlertDescription } from '../components/ui/alert';
+import DashboardTopNav from '../components/DashboardTopNav';
 import { 
   Building2, 
   BookOpen, 
@@ -145,32 +146,7 @@ export function MinistryDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50" dir="rtl">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-3">
-              <div className="bg-blue-600 p-2 rounded-lg">
-                <BookOpen className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">نظام كتابي</h1>
-                <p className="text-sm text-gray-600">لوحة تحكم الوزارة</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="text-right">
-                <p className="font-semibold text-gray-900">{user?.full_name}</p>
-                <p className="text-sm text-gray-600">{user?.role === 'ministry_admin' ? 'مدير النظام' : 'موظف الوزارة'}</p>
-              </div>
-              <Button variant="outline" size="sm" onClick={handleLogout}>
-                <LogOut className="w-4 h-4 ml-2" />
-                تسجيل خروج
-              </Button>
-            </div>
-          </div>
-        </div>
-      </header>
+      <DashboardTopNav activeTab={activeTab} onTabChange={setActiveTab} role="ministry" />
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -179,45 +155,6 @@ export function MinistryDashboard() {
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
-
-        {/* Tabs */}
-        <div className="mb-6 border-b border-gray-200">
-          <nav className="-mb-px flex space-x-8 space-x-reverse">
-            <button
-              onClick={() => setActiveTab('overview')}
-              className={`${
-                activeTab === 'overview'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
-            >
-              <Home className="h-4 w-4" />
-              النظرة العامة
-            </button>
-            <button
-              onClick={() => setActiveTab('warehouses')}
-              className={`${
-                activeTab === 'warehouses'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
-            >
-              <Warehouse className="h-4 w-4" />
-              المخازن
-            </button>
-            <button
-              onClick={() => setActiveTab('shipments')}
-              className={`${
-                activeTab === 'shipments'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
-            >
-              <TruckIcon className="h-4 w-4" />
-              الشحنات
-            </button>
-          </nav>
-        </div>
 
         {/* Tab Content */}
         {activeTab === 'overview' && (
@@ -268,34 +205,34 @@ export function MinistryDashboard() {
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
-                {/* إدارة المحافظات */}
+                {/* إدارة الشحنات */}
                 <Button 
                   variant="outline" 
                   className="h-auto py-4 justify-start"
-                  onClick={() => navigate('/ministry/provinces')}
-                >
-                  <Building2 className="ml-2 w-5 h-5" />
-                  إدارة المحافظات
-                </Button>
-                
-                {/* الشحنات الصادرة */}
-                <Button 
-                  variant="outline" 
-                  className="h-auto py-4 justify-start"
-                  onClick={() => navigate('/ministry/outgoing-shipments')}
+                  onClick={() => navigate('/ministry/shipments')}
                 >
                   <TruckIcon className="ml-2 w-5 h-5" />
-                  شحنات صادرة
+                  إدارة الشحنات
                 </Button>
                 
-                {/* الشحنات الواردة */}
+                {/* تتبع الشحنات */}
                 <Button 
                   variant="outline" 
                   className="h-auto py-4 justify-start"
-                  onClick={() => navigate('/ministry/incoming-shipments')}
+                  onClick={() => navigate('/ministry/track-shipments')}
                 >
                   <Package className="ml-2 w-5 h-5" />
-                  شحنات واردة
+                  تتبع الشحنات
+                </Button>
+                
+                {/* التقارير */}
+                <Button 
+                  variant="outline" 
+                  className="h-auto py-4 justify-start"
+                  onClick={() => navigate('/ministry/reports')}
+                >
+                  <BarChart3 className="ml-2 w-5 h-5" />
+                  التقارير
                 </Button>
                 
                 {/* مناديب التوصيل */}
@@ -335,7 +272,7 @@ export function MinistryDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="text-3xl font-bold text-gray-900">
-                  {stats?.warehouses.ministry_warehouses || 0}
+                  {stats?.warehouses?.ministry_warehouses || 0}
                 </div>
                 <p className="text-xs text-gray-600 mt-1">مخزن مركزي</p>
               </CardContent>
@@ -351,7 +288,7 @@ export function MinistryDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="text-3xl font-bold text-gray-900">
-                  {stats?.warehouses.province_warehouses || 0}
+                  {stats?.warehouses?.province_warehouses || 0}
                 </div>
                 <p className="text-xs text-gray-600 mt-1">مخزن فرعي</p>
               </CardContent>
@@ -367,7 +304,7 @@ export function MinistryDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="text-3xl font-bold text-gray-900">
-                  {stats?.stock.total_books || 0}
+                  {stats?.stock?.total_books || 0}
                 </div>
                 <p className="text-xs text-gray-600 mt-1">كتاب في المخازن</p>
               </CardContent>
@@ -383,7 +320,7 @@ export function MinistryDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="text-3xl font-bold text-gray-900">
-                  {stats?.shipments.total || 0}
+                  {stats?.shipments?.total || 0}
                 </div>
                 <p className="text-xs text-gray-600 mt-1">شحنة</p>
               </CardContent>
@@ -399,7 +336,7 @@ export function MinistryDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="text-3xl font-bold text-gray-900">
-                  {(stats?.shipments.by_status.pending || 0) + (stats?.shipments.by_status.assigned || 0) + (stats?.shipments.by_status.out_for_delivery || 0)}
+                  {((stats?.shipments?.by_status?.pending || 0) + (stats?.shipments?.by_status?.assigned || 0) + (stats?.shipments?.by_status?.out_for_delivery || 0))}
                 </div>
                 <p className="text-xs text-gray-600 mt-1">شحنة معلقة</p>
               </CardContent>
@@ -415,7 +352,7 @@ export function MinistryDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="text-3xl font-bold text-gray-900">
-                  {(stats?.shipments.by_status.delivered || 0) + (stats?.shipments.by_status.confirmed || 0)}
+                  {((stats?.shipments?.by_status?.delivered || 0) + (stats?.shipments?.by_status?.confirmed || 0))}
                 </div>
                 <p className="text-xs text-gray-600 mt-1">شحنة مكتملة</p>
               </CardContent>
@@ -431,9 +368,9 @@ export function MinistryDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="text-3xl font-bold text-gray-900">
-                  {stats?.couriers.active_couriers || 0}
+                  {stats?.couriers?.active_couriers || 0}
                 </div>
-                <p className="text-xs text-gray-600 mt-1">من {stats?.couriers.total_ministry_couriers || 0} سائق</p>
+                <p className="text-xs text-gray-600 mt-1">من {stats?.couriers?.total_ministry_couriers || 0} سائق</p>
               </CardContent>
             </Card>
 
@@ -447,7 +384,7 @@ export function MinistryDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="text-3xl font-bold text-gray-900">
-                  {stats?.school_requests.total || 0}
+                  {stats?.school_requests?.total || 0}
                 </div>
                 <p className="text-xs text-gray-600 mt-1">طلب مدرسة</p>
               </CardContent>
@@ -495,23 +432,23 @@ export function MinistryDashboard() {
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-gray-600">⏳ معلقة</span>
-                  <Badge variant="secondary">{stats?.shipments.by_status.pending || 0}</Badge>
+                  <Badge variant="secondary">{stats?.shipments?.by_status?.pending || 0}</Badge>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-gray-600">📋 مكلفة</span>
-                  <Badge className="bg-blue-100 text-blue-800">{stats?.shipments.by_status.assigned || 0}</Badge>
+                  <Badge className="bg-blue-100 text-blue-800">{stats?.shipments?.by_status?.assigned || 0}</Badge>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-gray-600">🚚 جاري التوصيل</span>
-                  <Badge className="bg-purple-100 text-purple-800">{stats?.shipments.by_status.out_for_delivery || 0}</Badge>
+                  <Badge className="bg-purple-100 text-purple-800">{stats?.shipments?.by_status?.out_for_delivery || 0}</Badge>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-gray-600">📦 تم التسليم</span>
-                  <Badge className="bg-green-100 text-green-800">{stats?.shipments.by_status.delivered || 0}</Badge>
+                  <Badge className="bg-green-100 text-green-800">{stats?.shipments?.by_status?.delivered || 0}</Badge>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-gray-600">✅ مؤكدة</span>
-                  <Badge className="bg-green-600 text-white">{stats?.shipments.by_status.confirmed || 0}</Badge>
+                  <Badge className="bg-green-600 text-white">{stats?.shipments?.by_status?.confirmed || 0}</Badge>
                 </div>
               </div>
             </CardContent>
@@ -561,7 +498,7 @@ export function MinistryDashboard() {
                 <div className="flex-1">
                   <p className="text-sm font-medium">آخر 30 يوم</p>
                   <p className="text-xs text-gray-600">
-                    {stats?.shipments.last_30_days || 0} شحنة جديدة
+                    {stats?.shipments?.last_30_days || 0} شحنة جديدة
                   </p>
                 </div>
               </div>
@@ -570,7 +507,7 @@ export function MinistryDashboard() {
                 <div className="flex-1">
                   <p className="text-sm font-medium">شحنات مكتملة</p>
                   <p className="text-xs text-gray-600">
-                    {stats?.shipments.completed_last_30_days || 0} في آخر 30 يوم
+                    {stats?.shipments?.completed_last_30_days || 0} في آخر 30 يوم
                   </p>
                 </div>
               </div>
@@ -579,7 +516,7 @@ export function MinistryDashboard() {
                 <div className="flex-1">
                   <p className="text-sm font-medium">المناديب النشطون</p>
                   <p className="text-xs text-gray-600">
-                    {stats?.couriers.active_couriers || 0} من {stats?.couriers.total_ministry_couriers || 0}
+                    {stats?.couriers?.active_couriers || 0} من {stats?.couriers?.total_ministry_couriers || 0}
                   </p>
                 </div>
               </div>

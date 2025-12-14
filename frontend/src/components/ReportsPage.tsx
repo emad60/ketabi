@@ -54,7 +54,15 @@ export function ReportsPage() {
     try {
       setLoading(true);
       const data = await statisticsService.getMinistryStats();
-      setStats(data);
+      
+      // معالجة البيانات المتداخلة
+      const processedStats: MinistryStatistics = {
+        ...data,
+        stock: data.stock || { total_books: 0 },
+        school_requests: data.school_requests || { total: 0 },
+      };
+      
+      setStats(processedStats);
     } catch (error) {
       console.error('Error fetching report data:', error);
     } finally {

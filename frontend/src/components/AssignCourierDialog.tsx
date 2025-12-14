@@ -62,9 +62,9 @@ export function AssignCourierDialog({
     try {
       setLoading(true);
       
-      // Determine courier type based on shipment
+      // Determine courier type based on shipment (accept legacy and new values)
       let courierRole = 'ministry_driver';
-      if (shipment?.courier_role === 'province_courier') {
+      if (shipment?.courier_role === 'province_driver' || shipment?.courier_role === 'province_courier') {
         courierRole = 'province_driver';
       }
       
@@ -90,13 +90,12 @@ export function AssignCourierDialog({
 
     try {
       setAssigning(true);
-      
-      await api.patch(`/warehouses/shipments/${shipment.id}/`, {
-        assigned_courier: parseInt(selectedCourier),
-        status: 'assigned'
+      // Use the assign action to trigger server-side notifications
+      await api.post(`/warehouses/shipments/${shipment.id}/assign/`, {
+        courier_id: parseInt(selectedCourier)
       });
 
-      alert('✅ تم إسناد الشحنة للمندوب بنجاح!');
+      alert('✅ تم إسناد الشحنة للمندوب بنجاح! تم إرسال إشعار للمندوب وللموظفين بالمحافظة.');
       
       if (onAssigned) {
         onAssigned();

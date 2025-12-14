@@ -62,6 +62,8 @@ class BookRequestSerializer(serializers.ModelSerializer):
     created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
     reviewed_by_name = serializers.CharField(source='reviewed_by.get_full_name', read_only=True)
     province_name = serializers.SerializerMethodField()
+    total_quantity = serializers.SerializerMethodField()
+    items_count = serializers.SerializerMethodField()
     
     class Meta:
         model = BookRequest
@@ -77,6 +79,8 @@ class BookRequestSerializer(serializers.ModelSerializer):
             'reviewed_by_name',
             'province_name',
             'items',
+            'total_quantity',
+            'items_count',
             'created_at',
             'updated_at',
             'reviewed_at',
@@ -84,9 +88,37 @@ class BookRequestSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'request_number', 'created_at', 'updated_at', 'created_by', 'reviewed_by', 'reviewed_at']
     
     def get_province_name(self, obj):
-        if hasattr(obj.created_by, 'province'):
-            return obj.created_by.province
-        return None
+        user = getattr(obj, 'created_by', None)
+        if not user:
+            return 'Unknown'
+
+        # If user has an explicit province property, prefer it
+        if hasattr(user, 'province') and user.province:
+            return user.province
+
+        # Try multiple fallbacks for a display name
+        name = None
+        if hasattr(user, 'get_full_name') and callable(getattr(user, 'get_full_name')):
+            try:
+                name = user.get_full_name()
+            except Exception:
+                name = None
+
+        if not name:
+            name = getattr(user, 'full_name', None)
+
+        if not name:
+            name = getattr(user, 'username', None)
+
+        return name or 'Unknown'
+    
+    def get_total_quantity(self, obj):
+        """الكمية الإجمالية للطلب"""
+        return sum(item.quantity for item in obj.items.all())
+    
+    def get_items_count(self, obj):
+        """عدد العناصر في الطلب"""
+        return obj.items.count()
     
     def create(self, validated_data):
         items_data = validated_data.pop('items', [])

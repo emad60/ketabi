@@ -126,7 +126,15 @@ export function MinistryShipmentManagementPage() {
       // Fetch stats via statisticsService
       try {
         const statsData = await statisticsService.getMinistryStats();
-        setStats(statsData);
+        
+        // معالجة البيانات المتداخلة
+        const processedStats = {
+          ...statsData,
+          stock: statsData.stock || { total_books: 0 },
+          school_requests: statsData.school_requests || { total: 0 },
+        };
+        
+        setStats(processedStats);
       } catch (e) {
         console.error('Failed to fetch stats via service:', e);
         setStats(null);

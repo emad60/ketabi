@@ -14,7 +14,7 @@ export default function NotificationsPage() {
     queryKey: ['notifications'],
     queryFn: async () => {
       const res = await apiService.getNotifications({ page_size: 100 });
-      return Array.isArray(res) ? res : (res.results || res);
+      return Array.isArray(res) ? res : ((res as any).results || res);
     },
   });
 
@@ -55,7 +55,7 @@ export default function NotificationsPage() {
           <div className="flex items-center justify-between mb-4">
             <Label>الإشعارات الواردة</Label>
             <div className="flex gap-2">
-              <Button variant="ghost" onClick={() => markAllMutation.mutate()} disabled={markAllMutation.isLoading}>
+              <Button variant="ghost" onClick={() => markAllMutation.mutate()} disabled={markAllMutation.isPending}>
                 تحديد الكل كمقروء
               </Button>
             </div>

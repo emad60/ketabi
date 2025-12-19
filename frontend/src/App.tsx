@@ -31,6 +31,8 @@ import { CreateRequestPage } from './pages/CreateRequestPage';
 import ProvinceCreateBookRequestPage from './pages/ProvinceCreateBookRequestPage';
 import { TrackShipmentsPage } from './pages/TrackShipmentsPage';
 import { ReportsPage as ReportsPageNew } from './pages/ReportsPage';
+import MinistryProvinceShipmentsPage from './pages/MinistryProvinceShipmentsPage';
+import ProvinceDirectoratesPage from './pages/ProvinceDirectoratesPage';
 import './App.css';
 
 const NotificationsPage = React.lazy(() => import('./pages/NotificationsPage'));
@@ -202,6 +204,14 @@ export default function App() {
         }
       />
       <Route
+        path="/ministry/province-shipments"
+        element={
+          <ProtectedRoute allowedRoles={['ministry_admin', 'ministry_staff']}>
+            <MinistryProvinceShipmentsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/notifications"
         element={
           <ProtectedRoute>
@@ -282,6 +292,14 @@ export default function App() {
         element={
           <ProtectedRoute allowedRoles={['province_admin', 'province_staff']}>
             <ProvinceWarehousesPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/province/directorates"
+        element={
+          <ProtectedRoute allowedRoles={['province_admin', 'province_staff']}>
+            <ProvinceDirectoratesPage />
           </ProtectedRoute>
         }
       />

@@ -6,7 +6,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from users.views import UserViewSet
 from books.views import BookViewSet
-from schools.views import ProvinceViewSet, SchoolViewSet
+from schools.views import ProvinceViewSet, SchoolViewSet, DirectorateViewSet
 from school_requests.views import SchoolRequestViewSet
 from warehouses.views import (
     MinistryWarehouseViewSet,
@@ -26,6 +26,7 @@ router = DefaultRouter()
 router.register(r'users', UserViewSet, basename='user')
 router.register(r'books', BookViewSet, basename='book')
 router.register(r'provinces', ProvinceViewSet, basename='province')
+router.register(r'directorates', DirectorateViewSet, basename='directorate')
 router.register(r'schools', SchoolViewSet, basename='school')
 router.register(r'school-requests', SchoolRequestViewSet, basename='school-request')
 

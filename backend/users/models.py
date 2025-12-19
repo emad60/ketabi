@@ -21,6 +21,7 @@ class UserManager(BaseUserManager):
 # الأدوار
 ROLE_CHOICES = [
     ('admin', 'Admin'),
+    ('ministry_admin', 'مديرالوزارة'),
     ('ministry_staff', 'موظف الوزارة'),
     ('ministry_warehouse', 'موظف مخازن الوزارة'),
     ('ministry_driver', 'مندوب توصيل الوزارة'),

@@ -64,6 +64,7 @@ export default function DashboardTopNav({ activeTab, onTabChange, role = 'provin
         { key: 'overview', label: 'لوحة التحكم', icon: Home, to: `${basePath}/dashboard` },
         { key: 'provinces', label: 'إدارة المحافظات', icon: Building2, to: `${basePath}/provinces` },
         { key: 'province-requests', label: 'طلبات المحافظات', icon: FileText, to: `${basePath}/province-requests` },
+        { key: 'province-shipments', label: 'شحنات المحافظات', icon: TruckIcon, to: `${basePath}/province-shipments` },
         { key: 'shipments', label: 'إدارة الشحنات', icon: TruckIcon, to: `${basePath}/shipments` },
         { key: 'warehouses', label: 'المستودعات', icon: Package, to: `${basePath}/warehouses` },
         { key: 'couriers', label: 'المناديب', icon: Users, to: `${basePath}/couriers` },
@@ -71,6 +72,7 @@ export default function DashboardTopNav({ activeTab, onTabChange, role = 'provin
       ]
     : [
         { key: 'overview', label: 'لوحة التحكم', icon: Home, to: `${basePath}/dashboard` },
+        { key: 'directorates', label: 'المديريات', icon: Building2, to: `${basePath}/directorates` },
         { key: 'school-requests', label: 'طلبات المدارس', icon: FileText, to: `${basePath}/school-requests` },
         { key: 'track-shipments', label: 'تتبع الشحنات', icon: TruckIcon, to: `${basePath}/track-shipments` },
         { key: 'warehouses', label: 'المستودعات', icon: Package, to: `${basePath}/warehouses` },

@@ -280,8 +280,24 @@ class ApiService {
     return response.data.results || response.data;
   }
 
+  async getProvinceWarehouses(filters?: any): Promise<any[]> {
+    const response = await api.get('/warehouses/province/', { params: filters });
+    return response.data.results || response.data;
+  }
+
   async getWarehouseStock(warehouseId: number): Promise<any> {
     const response = await api.get(`/warehouses/${warehouseId}/stock/`);
+    return response.data;
+  }
+
+  // Directorates
+  async getDirectorates(filters?: any): Promise<any[]> {
+    const response = await api.get('/directorates/', { params: filters });
+    return response.data.results || response.data;
+  }
+
+  async getDirectorateStatistics(id: number): Promise<any> {
+    const response = await api.get(`/directorates/${id}/statistics/`);
     return response.data;
   }
 

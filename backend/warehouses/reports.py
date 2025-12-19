@@ -422,7 +422,7 @@ class PDFReportGenerator:
                 books_data.append([
                     str(idx),
                     book.title[:40],
-                    book.get_grade_display(),
+                    book.get_grade_level_display(),
                     book.get_subject_display(),
                     term_display,
                     str(book_item.get('quantity', 0))

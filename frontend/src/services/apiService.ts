@@ -8,19 +8,37 @@ import api from './api';
 
 export interface SchoolRequest {
   id: number;
-  school_name: string;
-  principal_name: string;
-  phone: string;
-  email: string;
-  status: 'pending' | 'approved' | 'rejected';
-  items: Array<{
+  school: number;
+  school_detail?: {
+    id: number;
+    name: string;
+  };
+  school_name?: string; // backward compatibility
+  status: 'draft' | 'submitted' | 'approved' | 'rejected' | 'fulfilled' | 'cancelled';
+  reason_rejected: string | null;
+  created_by: number;
+  created_by_name: string;
+  reviewed_by: number | null;
+  reviewed_by_name?: string;
+  assigned_driver?: number | null;
+  items_readonly: Array<{
+    id: number;
+    book: number;
+    book_detail: {
+      id: number;
+      title: string;
+    };
+    quantity: number;
+  }>;
+  items?: Array<{
     book_id: number;
     book_title: string;
     quantity_requested: number;
     quantity_approved: number;
-  }>;
-  notes: string;
+  }>; // backward compatibility
+  notes?: string;
   created_at: string;
+  updated_at: string;
 }
 
 export interface ProvinceRequest {
@@ -30,6 +48,7 @@ export interface ProvinceRequest {
   status: 'pending' | 'approved' | 'rejected';
   notes: string;
   rejection_reason?: string;
+  has_shipment?: boolean;  // 🔥 جديد: للتحقق من وجود شحنة
   items: Array<{
     id: number;
     book: number | null;
@@ -129,6 +148,20 @@ class ApiService {
     }
   }
 
+  // جلب طلبات المدارس المعتمدة والجاهزة لإنشاء شحنات
+  async getApprovedSchoolRequests(): Promise<any> {
+    try {
+      const response = await api.get('/warehouses/province/school-requests/approved/');
+      return response.data;
+    } catch (err: any) {
+      if (err?.response?.status === 401) {
+        console.warn('[apiService] getApprovedSchoolRequests unauthorized (401)');
+        return { success: false, requests: [], count: 0 };
+      }
+      throw err;
+    }
+  }
+
   async getSchoolRequest(id: number): Promise<SchoolRequest> {
     const response = await api.get(`/school-requests/${id}/`);
     return response.data;
@@ -193,8 +226,10 @@ class ApiService {
     return response.data;
   }
 
-  async getShipmentReport(id: number): Promise<any> {
-    const response = await api.get(`/warehouses/shipments/${id}/report/`);
+  async getShipmentReport(id: number): Promise<Blob> {
+    const response = await api.get(`/warehouses/shipments/${id}/report/`, {
+      responseType: 'blob',
+    });
     return response.data;
   }
 

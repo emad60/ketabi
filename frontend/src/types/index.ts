@@ -4,6 +4,7 @@
 
 // User Types
 export type UserRole = 
+  | 'admin'
   | 'ministry_admin'
   | 'ministry_staff' 
   | 'ministry_warehouse' 
@@ -26,6 +27,8 @@ export interface User {
   warehouse?: number;
   warehouse_name?: string;
   is_active: boolean;
+  is_staff?: boolean;
+  is_superuser?: boolean;
   created_at: string;
 }
 

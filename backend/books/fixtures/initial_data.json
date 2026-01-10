@@ -1,0 +1,1209 @@
+[
+  {
+    "model": "books.subject",
+    "pk": 1,
+    "fields": {
+      "name": "القرآن الكريم",
+      "code": "quran"
+    }
+  },
+  {
+    "model": "books.subject",
+    "pk": 2,
+    "fields": {
+      "name": "التربية الإسلامية",
+      "code": "islamic"
+    }
+  },
+  {
+    "model": "books.subject",
+    "pk": 3,
+    "fields": {
+      "name": "اللغة العربية",
+      "code": "arabic"
+    }
+  },
+  {
+    "model": "books.subject",
+    "pk": 4,
+    "fields": {
+      "name": "اللغة الإنجليزية",
+      "code": "english"
+    }
+  },
+  {
+    "model": "books.subject",
+    "pk": 5,
+    "fields": {
+      "name": "العلوم",
+      "code": "science"
+    }
+  },
+  {
+    "model": "books.subject",
+    "pk": 6,
+    "fields": {
+      "name": "الرياضيات",
+      "code": "math"
+    }
+  },
+  {
+    "model": "books.subject",
+    "pk": 7,
+    "fields": {
+      "name": "الإجتماعيات",
+      "code": "social"
+    }
+  },
+  {
+    "model": "books.subject",
+    "pk": 8,
+    "fields": {
+      "name": "الجغرافيا",
+      "code": "geography"
+    }
+  },
+  {
+    "model": "books.subject",
+    "pk": 9,
+    "fields": {
+      "name": "التاريخ",
+      "code": "history"
+    }
+  },
+  {
+    "model": "books.subject",
+    "pk": 10,
+    "fields": {
+      "name": "التربية الوطنية",
+      "code": "national"
+    }
+  },
+  {
+    "model": "books.subject",
+    "pk": 11,
+    "fields": {
+      "name": "المجتمع",
+      "code": "society"
+    }
+  },
+  {
+    "model": "books.subject",
+    "pk": 12,
+    "fields": {
+      "name": "الكيمياء",
+      "code": "chemistry"
+    }
+  },
+  {
+    "model": "books.subject",
+    "pk": 13,
+    "fields": {
+      "name": "الفيزياء",
+      "code": "physics"
+    }
+  },
+  {
+    "model": "books.subject",
+    "pk": 14,
+    "fields": {
+      "name": "الأحياء",
+      "code": "biology"
+    }
+  },
+  {
+    "model": "books.subject",
+    "pk": 15,
+    "fields": {
+      "name": "الإحصاء",
+      "code": "statistics"
+    }
+  },
+  {
+    "model": "books.subject",
+    "pk": 16,
+    "fields": {
+      "name": "البلاغة و النقد",
+      "code": "rhetoric"
+    }
+  },
+  {
+    "model": "books.subject",
+    "pk": 17,
+    "fields": {
+      "name": "النحو و الصرف",
+      "code": "grammar"
+    }
+  },
+  {
+    "model": "books.subject",
+    "pk": 18,
+    "fields": {
+      "name": "القراءة",
+      "code": "reading"
+    }
+  },
+  {
+    "model": "books.subject",
+    "pk": 19,
+    "fields": {
+      "name": "علم النفس",
+      "code": "psychology"
+    }
+  },
+  {
+    "model": "books.subject",
+    "pk": 20,
+    "fields": {
+      "name": "الإيمان",
+      "code": "faith"
+    }
+  },
+  {
+    "model": "books.subject",
+    "pk": 21,
+    "fields": {
+      "name": "الحديث و الفقه",
+      "code": "hadith_fiqh"
+    }
+  },
+  {
+    "model": "books.subject",
+    "pk": 22,
+    "fields": {
+      "name": "السيرة النبوية",
+      "code": "seerah"
+    }
+  },
+  {
+    "model": "books.grade",
+    "pk": 1,
+    "fields": {
+      "name": "أول ابتدائي",
+      "level": "primary",
+      "order": 1
+    }
+  },
+  {
+    "model": "books.grade",
+    "pk": 2,
+    "fields": {
+      "name": "ثاني ابتدائي",
+      "level": "primary",
+      "order": 2
+    }
+  },
+  {
+    "model": "books.grade",
+    "pk": 3,
+    "fields": {
+      "name": "ثالث ابتدائي",
+      "level": "primary",
+      "order": 3
+    }
+  },
+  {
+    "model": "books.grade",
+    "pk": 4,
+    "fields": {
+      "name": "رابع أساسي",
+      "level": "middle",
+      "order": 4
+    }
+  },
+  {
+    "model": "books.grade",
+    "pk": 5,
+    "fields": {
+      "name": "خامس أساسي",
+      "level": "middle",
+      "order": 5
+    }
+  },
+  {
+    "model": "books.grade",
+    "pk": 6,
+    "fields": {
+      "name": "سادس أساسي",
+      "level": "middle",
+      "order": 6
+    }
+  },
+  {
+    "model": "books.grade",
+    "pk": 7,
+    "fields": {
+      "name": "سابع أساسي",
+      "level": "middle",
+      "order": 7
+    }
+  },
+  {
+    "model": "books.grade",
+    "pk": 8,
+    "fields": {
+      "name": "ثامن أساسي",
+      "level": "middle",
+      "order": 8
+    }
+  },
+  {
+    "model": "books.grade",
+    "pk": 9,
+    "fields": {
+      "name": "تاسع أساسي",
+      "level": "middle",
+      "order": 9
+    }
+  },
+  {
+    "model": "books.grade",
+    "pk": 10,
+    "fields": {
+      "name": "أول ثانوي",
+      "level": "secondary",
+      "order": 10
+    }
+  },
+  {
+    "model": "books.grade",
+    "pk": 11,
+    "fields": {
+      "name": "ثاني ثانوي(علمي)",
+      "level": "secondary",
+      "order": 11
+    }
+  },
+  {
+    "model": "books.grade",
+    "pk": 12,
+    "fields": {
+      "name": "ثالث ثانوي(علمي)",
+      "level": "secondary",
+      "order": 12
+    }
+  },
+  {
+    "model": "books.grade",
+    "pk": 13,
+    "fields": {
+      "name": "ثاني ثانوي(أدبي)",
+      "level": "secondary",
+      "order": 13
+    }
+  },
+  {
+    "model": "books.grade",
+    "pk": 14,
+    "fields": {
+      "name": "ثالث ثانوي(أدبي)",
+      "level": "secondary",
+      "order": 14
+    }
+  },
+  {
+    "model": "books.term",
+    "pk": 1,
+    "fields": {
+      "name": "الفصل الأول",
+      "number": 1
+    }
+  },
+  {
+    "model": "books.term",
+    "pk": 2,
+    "fields": {
+      "name": "الفصل الثاني",
+      "number": 2
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 1,
+      "subject": 1
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 1,
+      "subject": 2
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 1,
+      "subject": 3
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 1,
+      "subject": 5
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 1,
+      "subject": 6
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 2,
+      "subject": 1
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 2,
+      "subject": 2
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 2,
+      "subject": 3
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 2,
+      "subject": 5
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 2,
+      "subject": 6
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 3,
+      "subject": 1
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 3,
+      "subject": 2
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 3,
+      "subject": 3
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 3,
+      "subject": 5
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 3,
+      "subject": 6
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 4,
+      "subject": 1
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 4,
+      "subject": 2
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 4,
+      "subject": 3
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 4,
+      "subject": 5
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 4,
+      "subject": 6
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 4,
+      "subject": 7
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 5,
+      "subject": 1
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 5,
+      "subject": 2
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 5,
+      "subject": 3
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 5,
+      "subject": 5
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 5,
+      "subject": 6
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 5,
+      "subject": 7
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 6,
+      "subject": 1
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 6,
+      "subject": 2
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 6,
+      "subject": 3
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 6,
+      "subject": 5
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 6,
+      "subject": 6
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 6,
+      "subject": 7
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 7,
+      "subject": 1
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 7,
+      "subject": 2
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 7,
+      "subject": 3
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 7,
+      "subject": 4
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 7,
+      "subject": 5
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 7,
+      "subject": 6
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 7,
+      "subject": 8
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 7,
+      "subject": 9
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 7,
+      "subject": 10
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 8,
+      "subject": 1
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 8,
+      "subject": 2
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 8,
+      "subject": 3
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 8,
+      "subject": 4
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 8,
+      "subject": 5
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 8,
+      "subject": 6
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 8,
+      "subject": 8
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 8,
+      "subject": 9
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 8,
+      "subject": 10
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 9,
+      "subject": 1
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 9,
+      "subject": 2
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 9,
+      "subject": 3
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 9,
+      "subject": 4
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 9,
+      "subject": 5
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 9,
+      "subject": 6
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 9,
+      "subject": 8
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 9,
+      "subject": 9
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 9,
+      "subject": 10
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 10,
+      "subject": 1
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 10,
+      "subject": 4
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 10,
+      "subject": 6
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 10,
+      "subject": 8
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 10,
+      "subject": 9
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 10,
+      "subject": 11
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 10,
+      "subject": 12
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 10,
+      "subject": 13
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 10,
+      "subject": 14
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 10,
+      "subject": 16
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 10,
+      "subject": 17
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 10,
+      "subject": 18
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 10,
+      "subject": 20
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 10,
+      "subject": 21
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 10,
+      "subject": 22
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 11,
+      "subject": 1
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 11,
+      "subject": 4
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 11,
+      "subject": 6
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 11,
+      "subject": 12
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 11,
+      "subject": 13
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 11,
+      "subject": 14
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 11,
+      "subject": 16
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 11,
+      "subject": 17
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 11,
+      "subject": 18
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 11,
+      "subject": 20
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 11,
+      "subject": 21
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 11,
+      "subject": 22
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 12,
+      "subject": 1
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 12,
+      "subject": 4
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 12,
+      "subject": 6
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 12,
+      "subject": 12
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 12,
+      "subject": 13
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 12,
+      "subject": 14
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 12,
+      "subject": 16
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 12,
+      "subject": 17
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 12,
+      "subject": 18
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 12,
+      "subject": 20
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 12,
+      "subject": 21
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 12,
+      "subject": 22
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 13,
+      "subject": 1
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 13,
+      "subject": 4
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 13,
+      "subject": 6
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 13,
+      "subject": 8
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 13,
+      "subject": 9
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 13,
+      "subject": 11
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 13,
+      "subject": 15
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 13,
+      "subject": 16
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 13,
+      "subject": 17
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 13,
+      "subject": 18
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 13,
+      "subject": 19
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 13,
+      "subject": 20
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 13,
+      "subject": 21
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 13,
+      "subject": 22
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 14,
+      "subject": 1
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 14,
+      "subject": 4
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 14,
+      "subject": 6
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 14,
+      "subject": 8
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 14,
+      "subject": 9
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 14,
+      "subject": 11
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 14,
+      "subject": 15
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 14,
+      "subject": 16
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 14,
+      "subject": 17
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 14,
+      "subject": 18
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 14,
+      "subject": 19
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 14,
+      "subject": 20
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 14,
+      "subject": 21
+    }
+  },
+  {
+    "model": "books.gradesubject",
+    "fields": {
+      "grade": 14,
+      "subject": 22
+    }
+  }
+]

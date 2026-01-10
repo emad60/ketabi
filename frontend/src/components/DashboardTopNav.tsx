@@ -5,12 +5,12 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell } from 'lucide-react';
 import apiService from '../services/apiService';
-import { LogOut, Home, FileText, Building2, TruckIcon, Users, BookOpen, BarChart3, Package } from 'lucide-react';
+import { LogOut, Home, FileText, Building2, TruckIcon, Users, BookOpen, BarChart3, Package, PackageCheck } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 
 type Props = {
-  activeTab: string;
-  onTabChange: (tab: string) => void;
+  activeTab?: string;
+  onTabChange?: (tab: string) => void;
   role?: 'province' | 'ministry';
 };
 
@@ -74,6 +74,10 @@ export default function DashboardTopNav({ activeTab, onTabChange, role = 'provin
         { key: 'overview', label: 'لوحة التحكم', icon: Home, to: `${basePath}/dashboard` },
         { key: 'directorates', label: 'المديريات', icon: Building2, to: `${basePath}/directorates` },
         { key: 'school-requests', label: 'طلبات المدارس', icon: FileText, to: `${basePath}/school-requests` },
+        { key: 'shipments', label: 'إدارة الشحنات', icon: Package, to: `${basePath}/shipments` },
+        { key: 'create-shipment', label: 'إنشاء شحنة', icon: TruckIcon, to: `${basePath}/create-shipment` },
+        { key: 'shipment-notifications', label: 'إشعارات الشحنات', icon: Bell, to: `${basePath}/shipment-notifications` },
+        { key: 'receive-shipments', label: 'استلام الشحنات', icon: PackageCheck, to: `${basePath}/receive-shipments` },
         { key: 'track-shipments', label: 'تتبع الشحنات', icon: TruckIcon, to: `${basePath}/track-shipments` },
         { key: 'warehouses', label: 'المستودعات', icon: Package, to: `${basePath}/warehouses` },
         { key: 'couriers', label: 'المناديب', icon: Users, to: `${basePath}/couriers` },
@@ -154,7 +158,10 @@ export default function DashboardTopNav({ activeTab, onTabChange, role = 'provin
               return (
                 <button
                   key={l.key}
-                  onClick={() => { onTabChange(l.key); navigate(l.to); }}
+                  onClick={() => { 
+                    if (onTabChange) onTabChange(l.key); 
+                    navigate(l.to); 
+                  }}
                   className={`whitespace-nowrap px-5 py-2.5 rounded-full flex items-center gap-2 text-sm font-medium transition-all ${
                     active ? 'text-purple-600 bg-purple-50 shadow-sm' : 'text-gray-600 hover:bg-gray-50'
                   }`}

@@ -63,15 +63,24 @@ import { useAuthStore } from '../store/authStore';
 interface SchoolRequest {
   id: number;
   school_name: string;
+  school?: {
+    id: number;
+    name: string;
+  };
   principal_name: string;
   phone: string;
   email: string;
   status: string;
   items: Array<{
+    id: number;
     book_id: number;
     book_title: string;
+    book_subject?: string;
+    book_grade?: string;
+    book_term?: string;
     quantity_requested: number;
     quantity_approved: number;
+    quantity?: number;
   }>;
   created_at: string;
 }
@@ -121,10 +130,9 @@ export default function ProvinceShipmentPage() {
   } = useQuery({
     queryKey: ['approvedSchoolRequests'],
     queryFn: async () => {
-      const response = await apiService.getSchoolRequests({
-        status: 'approved',
-      });
-      return response;
+      const response = await apiService.getApprovedSchoolRequests();
+      // response structure: { success: true, count: N, requests: [...] }
+      return response.requests || [];
     },
   });
 
@@ -138,11 +146,10 @@ export default function ProvinceShipmentPage() {
     queryFn: async () => {
       const response = await apiService.getShipments({
         status: filterStatus === 'all' ? undefined : filterStatus,
-        courier_role: 'province_courier',
+        // تم حذف courier_role ليتم عرض جميع الشحنات
       });
       return Array.isArray(response) ? response : (response as any).results || [];
     },
-
   });
 
   // جلب المندوبين
@@ -200,14 +207,15 @@ export default function ProvinceShipmentPage() {
     if (!selectedRequest) return;
 
     const shipmentData = {
-      to_school_name: selectedRequest.school_name,
-      books: selectedRequest.items.map((item) => ({
+      to_school_name: selectedRequest.school?.name || selectedRequest.school_name || '',
+      books: (selectedRequest.items || []).map((item: any) => ({
         book_id: item.book_id,
-        book_title: item.book_title,
-        quantity: item.quantity_approved,
+        quantity: item.quantity || item.quantity_approved || item.quantity_requested,
+        term: item.book_term || 'second', // Use term from API or default to 'second'
       })),
       courier_role: 'province_courier',
-      related_request: selectedRequest.id,
+      // Don't include related_request for general shipments
+      // related_request: selectedRequest.id,
     };
 
     createShipmentMutation.mutate(shipmentData);
@@ -226,11 +234,11 @@ export default function ProvinceShipmentPage() {
     confirmDeliveryMutation.mutate(qrScanData);
   };
 
-  const filteredRequests = (schoolRequests || []).filter((req: SchoolRequest) => {
-    const school = (req.school_name || '').toString().toLowerCase();
-    const principal = (req.principal_name || '').toString().toLowerCase();
+  const filteredRequests = (schoolRequests || []).filter((req: any) => {
+    const school = (req.school?.name || '').toString().toLowerCase();
+    const province = (req.school?.province || '').toString().toLowerCase();
     const q = searchTerm.toString().toLowerCase();
-    return school.includes(q) || principal.includes(q);
+    return school.includes(q) || province.includes(q) || req.id.toString().includes(q);
   });
 
   const filteredShipments = (shipments || []).filter((ship: Shipment) => {
@@ -274,85 +282,31 @@ export default function ProvinceShipmentPage() {
     }
   };
 
-  const generateQRReport = (shipment: Shipment) => {
-    // في التطبيق الحقيقي، ستكون هناك مكتبة QR code
-    const reportHTML = `
-      <!DOCTYPE html>
-      <html dir="rtl" lang="ar">
-      <head>
-        <meta charset="UTF-8">
-        <title>تقرير الشحنة</title>
-        <style>
-          body { font-family: Arial; margin: 20px; }
-          .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 20px; }
-          .info { margin: 20px 0; }
-          .info-row { display: flex; justify-content: space-between; margin: 10px 0; }
-          .items { margin-top: 20px; }
-          .items table { width: 100%; border-collapse: collapse; }
-          .items th, .items td { border: 1px solid #ddd; padding: 10px; text-align: right; }
-          .qr-section { text-align: center; margin: 30px 0; padding: 20px; border: 2px dashed #666; }
-          .footer { margin-top: 30px; text-align: center; font-size: 12px; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h1>تقرير شحنة</h1>
-          <p>نظام توزيع الكتب المدرسية</p>
-        </div>
-        
-        <div class="info">
-          <div class="info-row">
-            <span><strong>رقم التتبع:</strong> ${shipment.tracking_code}</span>
-            <span><strong>التاريخ:</strong> ${new Date().toLocaleDateString('ar-EG')}</span>
-          </div>
-          <div class="info-row">
-            <span><strong>المدرسة:</strong> ${shipment.to_school_name}</span>
-          </div>
-        </div>
-        
-        <div class="items">
-          <h3>تفاصيل الكتب:</h3>
-          <table>
-            <thead>
-              <tr>
-                <th>اسم الكتاب</th>
-                <th>الكمية</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${shipment.books
-                .map(
-                  (item) =>
-                    `<tr><td>${item.book_title}</td><td>${item.quantity}</td></tr>`
-                )
-                .join('')}
-            </tbody>
-          </table>
-        </div>
-        
-        <div class="qr-section">
-          <p style="margin-bottom: 20px;"><strong>اسح الكود أدناه عند التسليم:</strong></p>
-          <div style="font-size: 24px; font-weight: bold; font-family: monospace; padding: 20px;">
-            ${shipment.qr_code || shipment.tracking_code}
-          </div>
-          <p style="margin-top: 20px; color: #666;">
-            يرجى حفظ هذا التقرير وإرساله للمدرسة<br/>
-            عند التسليم، اسح الكود للتأكيد
-          </p>
-        </div>
-        
-        <div class="footer">
-          <p>نظام توزيع الكتب المدرسية - المحافظة</p>
-        </div>
-      </body>
-      </html>
-    `;
-
-    const win = window.open('', '', 'width=800,height=600');
-    if (win) {
-      win.document.write(reportHTML);
-      win.document.close();
-      win.print();
+  const generateQRReport = async (shipment: Shipment) => {
+    try {
+      // استخدام API الباك إند لتوليد PDF
+      const response = await apiService.getShipmentReport(shipment.id);
+      
+      // فتح PDF في نافذة جديدة
+      const blob = new Blob([response], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const win = window.open(url, '_blank');
+      
+      if (!win) {
+        // إذا فشل فتح النافذة، قم بتحميل الملف
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `shipment_${shipment.tracking_code}_report.pdf`;
+        link.click();
+        window.URL.revokeObjectURL(url);
+      }
+    } catch (error) {
+      console.error('Error generating report:', error);
+      toast({
+        title: 'خطأ',
+        description: 'حدث خطأ أثناء توليد التقرير',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -419,52 +373,54 @@ export default function ProvinceShipmentPage() {
 
               {filteredRequests && filteredRequests.length > 0 ? (
                 <div className="space-y-3">
-                  {filteredRequests.map((request: SchoolRequest) => (
+                  {filteredRequests.map((request: any) => (
                     <Card
                       key={request.id}
-                      className="cursor-pointer hover:bg-gray-50 transition"
+                      className="cursor-pointer hover:bg-gray-50 transition border-r-4 border-r-blue-500"
                       onClick={() => setSelectedRequest(request)}
                     >
                       <CardContent className="pt-6">
                         <div className="space-y-3">
                           <div className="grid grid-cols-2 gap-4 mb-4">
                             <div>
+                              <p className="text-sm text-gray-600">رقم الطلب</p>
+                              <p className="font-semibold text-blue-600">#{request.id}</p>
+                            </div>
+                            <div>
+                              <p className="text-sm text-gray-600">الحالة</p>
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                موافق عليه
+                              </span>
+                            </div>
+                            <div className="col-span-2">
                               <p className="text-sm text-gray-600">المدرسة</p>
-                              <p className="font-semibold">
-                                {request.school_name}
+                              <p className="font-bold text-lg">
+                                {request.school?.name || 'غير محدد'}
                               </p>
                             </div>
                             <div>
-                              <p className="text-sm text-gray-600">
-                                مدير المدرسة
-                              </p>
-                              <p className="font-semibold">
-                                {request.principal_name}
-                              </p>
+                              <p className="text-sm text-gray-600">المحافظة</p>
+                              <p>{request.school?.province || '-'}</p>
                             </div>
                             <div>
-                              <p className="text-sm text-gray-600">الهاتف</p>
-                              <p className="font-mono">{request.phone}</p>
-                            </div>
-                            <div>
-                              <p className="text-sm text-gray-600">البريد</p>
-                              <p className="font-mono text-sm">{request.email}</p>
+                              <p className="text-sm text-gray-600">المديرية</p>
+                              <p>{request.school?.directorate || '-'}</p>
                             </div>
                           </div>
 
                           <div className="border-t pt-3">
                             <p className="text-sm font-semibold mb-2">
-                              الكتب المطلوبة:
+                              الكتب المطلوبة ({request.total_items || request.items?.length || 0}):
                             </p>
                             <div className="space-y-2">
-                              {(request.items || []).map((item) => (
+                              {(request.items || []).map((item: any, idx: number) => (
                                 <div
-                                  key={item.book_id}
+                                  key={item.id || idx}
                                   className="flex justify-between items-center text-sm bg-gray-50 p-2 rounded"
                                 >
-                                  <span>{item.book_title}</span>
-                                  <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs">
-                                    {item.quantity_approved} نسخة
+                                  <span className="flex-1">{item.book_title}</span>
+                                  <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded text-xs font-semibold">
+                                    {item.quantity} نسخة
                                   </span>
                                 </div>
                               ))}
@@ -479,7 +435,10 @@ export default function ProvinceShipmentPage() {
                               <DialogTrigger asChild>
                                 <Button
                                   className="w-full mt-4 bg-green-600 hover:bg-green-700"
-                                  onClick={() => setIsCreateDialogOpen(true)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setIsCreateDialogOpen(true);
+                                  }}
                                 >
                                   <Plus className="w-4 h-4 mr-2" />
                                   إنشاء شحنة
@@ -490,7 +449,7 @@ export default function ProvinceShipmentPage() {
                                   <DialogTitle>إنشاء شحنة جديدة</DialogTitle>
                                   <DialogDescription>
                                     سيتم إنشاء شحنة لـ{' '}
-                                    {selectedRequest?.school_name}
+                                    {selectedRequest?.school?.name}
                                   </DialogDescription>
                                 </DialogHeader>
                                 <div className="space-y-4">
@@ -501,8 +460,8 @@ export default function ProvinceShipmentPage() {
                                       </span>
                                       <span>
                                         {(selectedRequest?.items || []).reduce(
-                                          (sum, item) =>
-                                            sum + item.quantity_approved,
+                                          (sum: number, item: any) =>
+                                            sum + (item.quantity || 0),
                                           0
                                         )}{' '}
                                         نسخة
@@ -529,7 +488,10 @@ export default function ProvinceShipmentPage() {
                             <Button
                               className="w-full mt-4"
                               variant="outline"
-                              onClick={() => setSelectedRequest(request)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedRequest(request);
+                              }}
                             >
                               اختيار هذا الطلب
                             </Button>
@@ -540,10 +502,13 @@ export default function ProvinceShipmentPage() {
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-12 text-gray-500">
-                  <BookOpen className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                  <p>لا توجد طلبات معتمدة</p>
-                </div>
+                !isLoadingRequests && (
+                  <div className="text-center py-12 text-gray-500">
+                    <BookOpen className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                    <p className="font-semibold">لا توجد طلبات معتمدة</p>
+                    <p className="text-sm mt-2">لا يوجد طلبات مدارس موافق عليها حالياً</p>
+                  </div>
+                )
               )}
             </CardContent>
           </Card>

@@ -10,8 +10,11 @@ import ProvinceDashboardAdvanced from './pages/ProvinceDashboardAdvanced';
 import ProvinceIncomingSchoolRequestsPage from './pages/ProvinceIncomingSchoolRequestsPage';
 import ProvinceShipmentPage from './pages/ProvinceShipmentPage';
 import ShipmentDetailPage from './pages/ShipmentDetailPage';
+import { ProvinceCreateShipmentPage } from './pages/ProvinceCreateShipmentPage';
+import { ProvinceManualShipmentPage } from './pages/ProvinceManualShipmentPage';
 import { MinistryProvinceRequestsPage as MinistryProvinceRequestsPageNew } from './pages/MinistryProvinceRequestsPage';
 import { MinistryProvincesManagementPage } from './pages/MinistryProvincesManagementPage';
+import ProvinceDetailPage from './pages/ProvinceDetailPage';
 import { MinistryWarehousesPage } from './pages/MinistryWarehousesPage';
 import { ProvinceWarehousesPage } from './pages/ProvinceWarehousesPage';
 import { WarehouseStockPage } from './pages/WarehouseStockPage';
@@ -33,6 +36,8 @@ import { TrackShipmentsPage } from './pages/TrackShipmentsPage';
 import { ReportsPage as ReportsPageNew } from './pages/ReportsPage';
 import MinistryProvinceShipmentsPage from './pages/MinistryProvinceShipmentsPage';
 import ProvinceDirectoratesPage from './pages/ProvinceDirectoratesPage';
+import { ProvinceReceiveShipmentsPage } from './components/ProvinceReceiveShipmentsPage';
+import ProvinceShipmentNotificationsPage from './pages/ProvinceShipmentNotificationsPage';
 import './App.css';
 
 const NotificationsPage = React.lazy(() => import('./pages/NotificationsPage'));
@@ -54,8 +59,10 @@ function ProtectedRoute({
     return <Navigate to="/login" replace />;
   }
 
-  // Admin has access to everything
-
+  // Admin and superuser have access to everything
+  if (user?.role === 'admin' || user?.is_superuser) {
+    return <>{children}</>;
+  }
 
   if (allowedRoles.length > 0 && user && !allowedRoles.includes(user.role)) {
     return <Navigate to="/unauthorized" replace />;
@@ -78,6 +85,12 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
       return <>{children}</>;
     }
     const role = user.role;
+    
+    // Admin goes to ministry dashboard by default
+    if (role === 'admin' || user.is_superuser) {
+      return <Navigate to="/ministry/dashboard" replace />;
+    }
+    
     if ([
       'ministry_admin', 'ministry_staff', 'ministry_warehouse'
     ].includes(role)) {
@@ -184,6 +197,22 @@ export default function App() {
         element={
           <ProtectedRoute allowedRoles={['ministry_admin', 'ministry_staff']}>
             <MinistryProvincesManagementPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/ministry/provinces/:id"
+        element={
+          <ProtectedRoute allowedRoles={['ministry_admin', 'ministry_staff']}>
+            <ProvinceDetailPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/ministry/province/:id/details"
+        element={
+          <ProtectedRoute allowedRoles={['ministry_admin', 'ministry_staff']}>
+            <ProvinceDetailPage />
           </ProtectedRoute>
         }
       />
@@ -320,6 +349,22 @@ export default function App() {
         }
       />
       <Route
+        path="/province/create-shipment"
+        element={
+          <ProtectedRoute allowedRoles={['province_admin', 'province_staff']}>
+            <ProvinceCreateShipmentPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/province/manual-shipment"
+        element={
+          <ProtectedRoute allowedRoles={['province_admin', 'province_staff']}>
+            <ProvinceManualShipmentPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/province/book-requests"
         element={
           <ProtectedRoute allowedRoles={['province_admin', 'province_staff']}>
@@ -388,6 +433,22 @@ export default function App() {
         element={
           <ProtectedRoute allowedRoles={['province_admin', 'province_staff']}>
             <TrackShipmentsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/province/receive-shipments"
+        element={
+          <ProtectedRoute allowedRoles={['province_admin', 'province_staff']}>
+            <ProvinceReceiveShipmentsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/province/shipment-notifications"
+        element={
+          <ProtectedRoute allowedRoles={['province_admin', 'province_staff']}>
+            <ProvinceShipmentNotificationsPage />
           </ProtectedRoute>
         }
       />

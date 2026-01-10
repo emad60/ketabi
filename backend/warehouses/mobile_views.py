@@ -11,6 +11,8 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.db.models import Q, F
 from django.utils import timezone
 from django.core.files.base import ContentFile
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
 import base64
 import json
 
@@ -413,6 +415,84 @@ def school_incoming_deliveries(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+def province_receive_shipment(request, shipment_id):
+    """
+    Province staff confirms receipt of shipment from ministry
+    Expected data: { 
+        "receiver_name": "اسم المستلم",
+        "notes": "optional notes",
+        "condition": "good/damaged"
+    }
+    """
+    user = request.user
+    
+    if user.role not in ['province_admin', 'province_staff', 'province_manager']:
+        return Response(
+            {'error': 'Only province staff can receive shipments'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    try:
+        shipment = Shipment.objects.get(id=shipment_id)
+    except Shipment.DoesNotExist:
+        return Response(
+            {'error': 'Shipment not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Check if shipment is for this province
+    # User province can be either an ID (int) or a name (string)
+    user_province = user.province
+    shipment_province_name = None
+    
+    if shipment.to_province:
+        shipment_province_name = shipment.to_province.province
+    
+    # Check by ID if user.province is numeric
+    if isinstance(user_province, int) or (isinstance(user_province, str) and user_province.isdigit()):
+        if shipment.to_province_id != int(user_province):
+            return Response(
+                {'error': 'Shipment not for your province'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+    # Check by name
+    elif isinstance(user_province, str):
+        if not shipment_province_name or shipment_province_name != user_province:
+            return Response(
+                {'error': f'Shipment not for your province. Shipment is for: {shipment_province_name}'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+    
+    if shipment.status != 'delivered':
+        return Response(
+            {'error': f'Shipment is not delivered yet. Current status: {shipment.status}'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    receiver_name = request.data.get('receiver_name')
+    if not receiver_name:
+        return Response(
+            {'error': 'receiver_name is required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Update shipment
+    shipment.status = 'confirmed'
+    shipment.confirmed_at = timezone.now()
+    shipment.confirmed_by = user
+    shipment.receiver_name = receiver_name
+    shipment.receiver_notes = request.data.get('notes', '')
+    shipment.delivery_condition = request.data.get('condition', 'good')
+    shipment.save()
+    
+    return Response({
+        'message': 'Shipment confirmed successfully',
+        'shipment': ShipmentSerializer(shipment).data
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def school_receive_delivery(request, shipment_id):
     """
     School staff confirms receipt of delivery
@@ -561,3 +641,164 @@ def driver_performance_stats(request):
         'recent_deliveries_30_days': recent_deliveries,
         'success_rate': round(success_rate, 2)
     })
+
+
+# ============================================================================
+# Unified QR Code Scanning API
+# ============================================================================
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@parser_classes([JSONParser])
+def unified_qr_scan(request):
+    """
+    نقطة موحدة لمسح QR Code للتسليم
+    
+    يستخدمها المندوب عند وصوله للجهة المستلمة لتأكيد التسليم
+    
+    Expected data:
+    {
+        "qr_token": "token_from_qr_code",  // التوكن من QR Code
+        "recipient_name": "اسم المستلم",
+        "latitude": 30.0444,               // موقع GPS
+        "longitude": 31.2357,
+        "notes": "ملاحظات اختيارية"
+    }
+    
+    Returns:
+    {
+        "success": true,
+        "message": "تم تأكيد التسليم بنجاح",
+        "shipment": {...},
+        "delivery_details": {
+            "delivered_at": "2025-12-24T10:30:00Z",
+            "recipient_name": "اسم المستلم",
+            "location": {"lat": 30.0444, "lng": 31.2357}
+        }
+    }
+    """
+    user = request.user
+    
+    # التحقق من صلاحيات المستخدم
+    if user.role not in ['ministry_driver', 'province_driver']:
+        return Response(
+            {'error': 'فقط المندوبون يمكنهم مسح QR Code للتسليم'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    # الحصول على البيانات
+    qr_token = request.data.get('qr_token')
+    recipient_name = request.data.get('recipient_name', '')
+    latitude = request.data.get('latitude')
+    longitude = request.data.get('longitude')
+    notes = request.data.get('notes', '')
+    
+    # التحقق من البيانات المطلوبة
+    if not qr_token:
+        return Response(
+            {'error': 'qr_token مطلوب'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    if not recipient_name:
+        return Response(
+            {'error': 'recipient_name مطلوب'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # التحقق من صلاحية QR Code
+    from .qr_generator import verify_shipment_qr_code
+    
+    verification_result = verify_shipment_qr_code(qr_token)
+    
+    if not verification_result.get('valid'):
+        return Response(
+            {
+                'error': verification_result.get('error', 'رمز QR غير صالح'),
+                'valid': False
+            },
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    shipment_id = verification_result.get('shipment_id')
+    
+    # الحصول على الشحنة
+    try:
+        shipment = Shipment.objects.select_related(
+            'from_ministry',
+            'to_province',
+            'assigned_courier'
+        ).get(id=shipment_id)
+    except Shipment.DoesNotExist:
+        return Response(
+            {'error': 'الشحنة غير موجودة'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # التحقق من أن الشحنة مسندة للمندوب الحالي
+    if shipment.assigned_courier != user:
+        return Response(
+            {'error': 'هذه الشحنة غير مسندة لك'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    # التحقق من حالة الشحنة
+    if shipment.status == 'delivered':
+        return Response(
+            {'error': 'تم تسليم هذه الشحنة مسبقاً'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    if shipment.status == 'confirmed':
+        return Response(
+            {'error': 'تم تأكيد هذه الشحنة مسبقاً'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # تحديث بيانات الشحنة
+    now = timezone.now()
+    
+    shipment.status = 'delivered'
+    shipment.delivered_at = now
+    shipment.recipient_name = recipient_name
+    shipment.delivery_notes = notes
+    
+    # تسجيل الموقع
+    if latitude and longitude:
+        shipment.current_latitude = float(latitude)
+        shipment.current_longitude = float(longitude)
+        shipment.last_location_update = now
+    
+    # تحديث بيانات QR
+    shipment.qr_used = True
+    shipment.qr_scanned_at = now
+    
+    shipment.save()
+    
+    # تسجيل في الـ logs
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(
+        f"[QR SCAN] Shipment #{shipment.id} delivered by {user.username} "
+        f"to {recipient_name} at {now}"
+    )
+    
+    # إرسال إشعار (اختياري - يمكن إضافته لاحقاً)
+    # من الممكن إرسال إشعار للمستلم أو للإدارة
+    
+    return Response({
+        'success': True,
+        'message': 'تم تأكيد التسليم بنجاح',
+        'shipment': ShipmentSerializer(shipment).data,
+        'delivery_details': {
+            'delivered_at': shipment.delivered_at.isoformat(),
+            'recipient_name': shipment.recipient_name,
+            'location': {
+                'latitude': shipment.current_latitude,
+                'longitude': shipment.current_longitude
+            } if shipment.current_latitude and shipment.current_longitude else None,
+            'notes': shipment.delivery_notes,
+            'qr_used': True,
+            'qr_scanned_at': shipment.qr_scanned_at.isoformat()
+        }
+    }, status=status.HTTP_200_OK)

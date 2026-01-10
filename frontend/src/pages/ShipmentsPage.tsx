@@ -72,7 +72,16 @@ export function ShipmentsPage() {
   const fetchShipments = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/warehouses/shipments/');
+      // فلترة الشحنات حسب نوع المستخدم
+      const params: any = {};
+      
+      if (!isMinistry) {
+        // موظفو المحافظة: فقط الشحنات من المحافظة للمدارس
+        params.from_province = user?.province;
+        params.shipment_type = 'province_to_school';
+      }
+      
+      const response = await api.get('/warehouses/shipments/', { params });
       setShipments(response.data.results || response.data);
       setError('');
     } catch (err: any) {

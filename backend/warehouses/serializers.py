@@ -53,6 +53,7 @@ class WarehouseStockSerializer(serializers.ModelSerializer):
     يعرض معلومات الكتاب والمستودع والكمية المتوفرة
     """
     book_label = serializers.SerializerMethodField(read_only=True)
+    book_details = serializers.SerializerMethodField(read_only=True)
     warehouse_name = serializers.SerializerMethodField(read_only=True)
     is_low_stock = serializers.BooleanField(read_only=True)
 
@@ -64,6 +65,7 @@ class WarehouseStockSerializer(serializers.ModelSerializer):
             "province_warehouse",
             "book",
             "book_label",
+            "book_details",
             "term",
             "quantity",
             "min_threshold",
@@ -72,7 +74,7 @@ class WarehouseStockSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "created_at", "updated_at", "book_label", "warehouse_name", "is_low_stock"]
+        read_only_fields = ["id", "created_at", "updated_at", "book_label", "book_details", "warehouse_name", "is_low_stock"]
 
     # Make warehouse fields optional in input; require at least one to be present
     ministry_warehouse = serializers.PrimaryKeyRelatedField(
@@ -106,6 +108,20 @@ class WarehouseStockSerializer(serializers.ModelSerializer):
     def get_book_label(self, obj):
         """عرض اسم الكتاب بشكل منسق"""
         return str(obj.book)
+
+    def get_book_details(self, obj):
+        """عرض تفاصيل الكتاب الكاملة"""
+        if not obj.book:
+            return None
+        return {
+            'id': obj.book.id,
+            'subject': obj.book.subject.name if obj.book.subject else 'غير محدد',
+            'subject_display': obj.book.subject.name if obj.book.subject else 'غير محدد',
+            'grade': obj.book.grade.name if obj.book.grade else 'غير محدد',
+            'grade_display': obj.book.grade.name if obj.book.grade else 'غير محدد',
+            'term': obj.book.term.name if obj.book.term else obj.term,
+            'term_display': obj.book.term.name if obj.book.term else obj.term,
+        }
 
     def get_warehouse_name(self, obj):
         """عرض اسم المستودع سواء كان وزارة أو محافظة"""
@@ -150,27 +166,96 @@ class ShipmentSerializer(serializers.ModelSerializer):
     """
     # معلومات مساعدة للعرض
     from_ministry_name = serializers.CharField(source="from_ministry.name", read_only=True)
+    from_province_name = serializers.SerializerMethodField(read_only=True)
     to_province_name = serializers.CharField(source="to_province.name", read_only=True)
     assigned_courier_name = serializers.CharField(source="assigned_courier.full_name", read_only=True)
+    assigned_courier_details = serializers.SerializerMethodField(read_only=True)
+    related_request_number = serializers.CharField(source="related_request.request_number", read_only=True)
+    related_school_request_number = serializers.CharField(source="related_school_request.request_number", read_only=True)
+    books_details = serializers.SerializerMethodField(read_only=True)  # 🔥 تفاصيل الكتب موسعة
 
     # فحوصات المخزون (نملؤها في validate)
     stock_available = serializers.BooleanField(read_only=True)
     stock_issues = serializers.ListField(child=serializers.CharField(), read_only=True)
 
+    def get_from_province_name(self, obj):
+        """الحصول على اسم المحافظة المرسلة (للشحنات من المحافظة للمدارس)"""
+        if obj.related_school_request and obj.related_school_request.school:
+            school = obj.related_school_request.school
+            if hasattr(school, 'province') and school.province:
+                return school.province.name
+        return None
+
+    def get_assigned_courier_details(self, obj):
+        """إرجاع تفاصيل المندوب"""
+        if obj.assigned_courier:
+            return {
+                "id": obj.assigned_courier.id,
+                "username": obj.assigned_courier.username,
+                "full_name": obj.assigned_courier.full_name,
+            }
+        return None
+    
+    def get_books_details(self, obj):
+        """توسيع تفاصيل الكتب من JSON إلى كائنات كاملة"""
+        if not obj.books or not isinstance(obj.books, list):
+            return []
+        
+        from books.models import Book
+        expanded_books = []
+        
+        for book_item in obj.books:
+            book_id = book_item.get('book_id')
+            if not book_id:
+                continue
+                
+            try:
+                book = Book.objects.select_related('subject', 'grade', 'term').get(id=book_id)
+                expanded_books.append({
+                    'book_id': book.id,
+                    'book': {
+                        'id': book.id,
+                        'subject': book.subject.id if book.subject else None,
+                        'subject_display': book.subject.name if book.subject else 'غير محدد',
+                        'grade': book.grade.id if book.grade else None,
+                        'grade_display': book.grade.name if book.grade else 'غير محدد',
+                        'title': book.title,
+                    },
+                    'quantity': book_item.get('quantity', 0),
+                    'term': book.term.name if book.term else book_item.get('term', ''),
+                })
+            except Book.DoesNotExist:
+                # إذا لم يوجد الكتاب، احتفظ بالبيانات الأصلية
+                expanded_books.append({
+                    'book_id': book_id,
+                    'book': None,
+                    'quantity': book_item.get('quantity', 0),
+                    'term': book_item.get('term', ''),
+                })
+        
+        return expanded_books
+
     class Meta:
         model = Shipment
         fields = [
             "related_request",
+            "related_school_request",
+            "related_request_number",
+            "related_school_request_number",
             "id",
+            "tracking_code",
             "from_ministry",
             "from_ministry_name",
+            "from_province_name",
             "to_province",
             "to_province_name",
             "to_school_name",
             "courier_role",
             "assigned_courier",
             "assigned_courier_name",
-            "books",        # صيغة: [{book_id, quantity, term}, ...]
+            "assigned_courier_details",
+            "books",        # صيغة JSON الأصلية: [{book_id, quantity, term}, ...]
+            "books_details",  # 🔥 تفاصيل موسعة للكتب
             "qr_code",
             "status",
             # GPS Tracking
@@ -190,20 +275,35 @@ class ShipmentSerializer(serializers.ModelSerializer):
             # Stock validation
             "stock_available",
             "stock_issues",
+            # QR Code fields
+            "qr_token",
+            "qr_code_image",
+            "qr_expires_at",
+            "qr_used",
+            "qr_scanned_at",
         ]
         read_only_fields = [
             "id",
             "qr_code",
+            "tracking_code",
             "created_at",
             "updated_at",
             "from_ministry_name",
             "to_province_name",
             "assigned_courier_name",
+            "assigned_courier_details",
+            "related_request_number",
+            "related_school_request_number",
             "stock_available",
             "stock_issues",
             "last_location_update",
             "started_delivery_at",
             "delivered_at",
+            "qr_token",
+            "qr_code_image",
+            "qr_expires_at",
+            "qr_used",
+            "qr_scanned_at",
         ]
 
     def validate_books(self, value):
@@ -268,7 +368,7 @@ class ShipmentSerializer(serializers.ModelSerializer):
             for item in books:
                 book_id = int(item["book_id"])
                 qty = int(item["quantity"])
-                term = item["term"]
+                term = item.get("term", "")  # استخدم get بدلاً من [] المباشر
 
                 try:
                     if role == "ministry_courier":
@@ -309,6 +409,11 @@ class ShipmentSerializer(serializers.ModelSerializer):
         shipment = super().create(validated_data)
         # توليد QR بعد الإنشاء
         self._ensure_qr(shipment)
+        
+        # 🔥 خصم المخزون مباشرة عند إنشاء الشحنة
+        from .tasks import deduct_stock_after_confirmation
+        deduct_stock_after_confirmation.delay(shipment.id)
+        
         return shipment
 
     def update(self, instance, validated_data):
@@ -319,10 +424,97 @@ class ShipmentSerializer(serializers.ModelSerializer):
         if any(k in validated_data for k in ("from_ministry", "to_province", "courier_role")):
             self._ensure_qr(instance)
 
-        # شغّل خصم المخزون عند التأكيد
-        if prev_status != "confirmed" and instance.status == "confirmed":
-            # نتجنب الدورة: نستورد داخل الدالة
-            from .tasks import deduct_stock_after_confirmation
-            deduct_stock_after_confirmation.delay(instance.id)
-
         return instance
+
+
+# =========================
+#   Uploaded Reports serializers
+# =========================
+
+class ReportCommentSerializer(serializers.ModelSerializer):
+    """سيريالايزر لتعليقات التقارير"""
+    user_name = serializers.CharField(source='user.full_name', read_only=True)
+    
+    class Meta:
+        from .models import ReportComment
+        model = ReportComment
+        fields = ['id', 'report', 'user', 'user_name', 'comment', 'created_at']
+        read_only_fields = ['id', 'user', 'user_name', 'created_at']
+
+
+class UploadedReportSerializer(serializers.ModelSerializer):
+    """سيريالايزر للتقارير المرفوعة"""
+    uploaded_by_name = serializers.CharField(source='uploaded_by.full_name', read_only=True)
+    reviewed_by_name = serializers.CharField(source='reviewed_by.full_name', read_only=True)
+    warehouse_name = serializers.CharField(read_only=True)
+    file_size_mb = serializers.FloatField(read_only=True)
+    file_extension = serializers.CharField(read_only=True)
+    report_type_display = serializers.CharField(source='get_report_type_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    
+    class Meta:
+        from .models import UploadedReport
+        model = UploadedReport
+        fields = [
+            'id', 'title', 'report_type', 'report_type_display', 'description',
+            'file', 'file_size', 'file_size_mb', 'file_extension',
+            'uploaded_by', 'uploaded_by_name',
+            'ministry_warehouse', 'province_warehouse', 'warehouse_name',
+            'status', 'status_display',
+            'reviewed_by', 'reviewed_by_name', 'reviewed_at', 'review_notes',
+            'report_date', 'created_at', 'updated_at'
+        ]
+        read_only_fields = [
+            'id', 'uploaded_by', 'uploaded_by_name',
+            'file_size', 'file_size_mb', 'file_extension',
+            'reviewed_by', 'reviewed_by_name', 'reviewed_at',
+            'warehouse_name', 'report_type_display', 'status_display',
+            'created_at', 'updated_at'
+        ]
+
+
+class UploadedReportDetailSerializer(UploadedReportSerializer):
+    """سيريالايزر تفصيلي للتقارير المرفوعة مع التعليقات"""
+    comments = ReportCommentSerializer(many=True, read_only=True)
+    comments_count = serializers.SerializerMethodField()
+    
+    class Meta(UploadedReportSerializer.Meta):
+        fields = UploadedReportSerializer.Meta.fields + ['comments', 'comments_count']
+    
+    def get_comments_count(self, obj):
+        return obj.comments.count()
+
+
+# =========================
+#   Excel Reports Serializer
+# =========================
+
+class ExcelReportSerializer(serializers.ModelSerializer):
+    """سيريالايزر لتقارير Excel"""
+    uploaded_by_name = serializers.CharField(source='uploaded_by.full_name', read_only=True)
+    province_name = serializers.CharField(source='province.name', read_only=True)
+    file_url = serializers.SerializerMethodField()
+    file_size_mb = serializers.SerializerMethodField()
+    
+    class Meta:
+        from .models_reports import Report
+        model = Report
+        fields = [
+            'id', 'title', 'report_type', 'scope', 'description',
+            'file', 'file_url', 'uploaded_by', 'uploaded_by_name',
+            'province', 'province_name', 'created_at', 'file_size',
+            'file_size_mb', 'downloads_count'
+        ]
+        read_only_fields = ['id', 'uploaded_by', 'created_at', 'file_size', 'downloads_count']
+    
+    def get_file_url(self, obj):
+        if obj.file:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.file.url)
+        return None
+    
+    def get_file_size_mb(self, obj):
+        if obj.file_size:
+            return round(obj.file_size / (1024 * 1024), 2)
+        return 0

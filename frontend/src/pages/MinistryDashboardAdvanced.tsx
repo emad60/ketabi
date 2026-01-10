@@ -200,7 +200,7 @@ export function MinistryDashboardAdvanced() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {stats?.province_stats.map((province) => (
+              {stats?.province_stats && stats.province_stats.length > 0 ? stats.province_stats.map((province) => (
                 <div
                   key={province.id}
                   className="p-4 border rounded-lg hover:shadow-md transition-shadow cursor-pointer"
@@ -223,7 +223,11 @@ export function MinistryDashboardAdvanced() {
                     </div>
                   </div>
                 </div>
-              ))}
+              )) : (
+                <div className="col-span-3 text-center py-8 text-gray-500">
+                  لا توجد بيانات محافظات متاحة
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

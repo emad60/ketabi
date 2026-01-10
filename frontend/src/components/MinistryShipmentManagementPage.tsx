@@ -100,13 +100,65 @@ export function MinistryShipmentManagementPage() {
   const [selectedShipment, setSelectedShipment] = useState<ShipmentType | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [showAssignCourier, setShowAssignCourier] = useState(false);
+  const [showBulkAssign, setShowBulkAssign] = useState(false);
+  const [bulkCourierId, setBulkCourierId] = useState('');
+  const [couriers, setCouriers] = useState<any[]>([]);
   const [shipments, setShipments] = useState<ShipmentType[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchData();
+    fetchCouriers();
   }, []);
+
+  const fetchCouriers = async () => {
+    try {
+      const response = await api.get('/users/', { params: { role: 'ministry_driver' } });
+      const data = response.data.results || response.data || [];
+      setCouriers(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error fetching couriers:', error);
+    }
+  };
+
+  const handleBulkAssignCourier = async () => {
+    if (!bulkCourierId) {
+      alert('الرجاء اختيار مندوب');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      // Find all unassigned shipments
+      const unassignedShipments = shipments.filter(s => !s.assigned_courier);
+      
+      if (unassignedShipments.length === 0) {
+        alert('جميع الشحنات مُسندة بالفعل');
+        setShowBulkAssign(false);
+        return;
+      }
+
+      // Assign courier to all unassigned shipments
+      await Promise.all(
+        unassignedShipments.map(shipment =>
+          api.patch(`/warehouses/shipments/${shipment.id}/`, {
+            assigned_courier: parseInt(bulkCourierId)
+          })
+        )
+      );
+
+      alert(`✅ تم إسناد ${unassignedShipments.length} شحنة للمندوب بنجاح!`);
+      setShowBulkAssign(false);
+      setBulkCourierId('');
+      fetchData();
+    } catch (error) {
+      console.error('Error bulk assigning courier:', error);
+      alert('فشل في إسناد الشحنات');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const fetchData = async () => {
     try {
@@ -350,13 +402,25 @@ export function MinistryShipmentManagementPage() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>الشحنات الأخيرة</CardTitle>
-            <Button 
-              className="bg-blue-600 hover:bg-blue-700"
-              onClick={() => setShowCreateShipment(true)}
-            >
-              <Plus className="w-4 h-4 ml-2" />
-              إنشاء شحنة جديدة
-            </Button>
+            <div className="flex gap-2">
+              {shipments.filter(s => !s.assigned_courier).length > 0 && (
+                <Button 
+                  variant="outline"
+                  className="bg-purple-50 border-purple-300 hover:bg-purple-100 text-purple-700"
+                  onClick={() => setShowBulkAssign(true)}
+                >
+                  <User className="w-4 h-4 ml-2" />
+                  إسناد جماعي ({shipments.filter(s => !s.assigned_courier).length})
+                </Button>
+              )}
+              <Button 
+                className="bg-blue-600 hover:bg-blue-700"
+                onClick={() => setShowCreateShipment(true)}
+              >
+                <Plus className="w-4 h-4 ml-2" />
+                إنشاء شحنة جديدة
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -386,19 +450,19 @@ export function MinistryShipmentManagementPage() {
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <Package className="w-4 h-4 text-gray-500" />
-                        {shipment.from_ministry?.name || 'غير محدد'}
+                        {shipment.from_ministry_name || 'غير محدد'}
                       </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <MapPin className="w-4 h-4 text-gray-500" />
-                        {shipment.to_province?.province || 'غير محدد'}
+                        {shipment.to_province_name || 'غير محدد'}
                       </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <User className="w-4 h-4 text-gray-500" />
-                        {shipment.assigned_courier?.full_name || 'غير مُسند'}
+                        {shipment.assigned_courier_name || 'غير مُسند'}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -498,6 +562,49 @@ export function MinistryShipmentManagementPage() {
         shipment={selectedShipment}
         onStatusChange={fetchData}
       />
+
+      {/* Bulk Assign Dialog */}
+      <Dialog open={showBulkAssign} onOpenChange={setShowBulkAssign}>
+        <DialogContent dir="rtl" className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>إسناد جماعي للمندوب</DialogTitle>
+            <DialogDescription>
+              سيتم إسناد جميع الشحنات غير المُسندة ({shipments.filter(s => !s.assigned_courier).length} شحنة) للمندوب المحدد
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>اختر المندوب</Label>
+              <Select value={bulkCourierId} onValueChange={setBulkCourierId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="اختر مندوب..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {couriers.map((courier) => (
+                    <SelectItem key={courier.id} value={courier.id.toString()}>
+                      {courier.full_name || courier.username}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowBulkAssign(false)}>
+              إلغاء
+            </Button>
+            <Button 
+              className="bg-purple-600 hover:bg-purple-700" 
+              onClick={handleBulkAssignCourier}
+              disabled={loading || !bulkCourierId}
+            >
+              {loading ? 'جاري الإسناد...' : 'إسناد الكل'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

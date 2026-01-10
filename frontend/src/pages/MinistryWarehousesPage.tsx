@@ -46,7 +46,43 @@ interface MinistryWarehouse {
   name: string;
   location: string;
   staff: number[];
+  staff_details?: Array<{
+    id: number;
+    full_name: string;
+    email: string;
+    role: string;
+  }>;
+  total_stock?: number;
+  stock_items?: Array<{
+    id: number;
+    book: {
+      id: number;
+      title: string;
+      subject_display: string;
+      grade_display: string;
+    };
+    quantity: number;
+    term: string;
+  }>;
+  deduction_reports?: Array<{
+    id: number;
+    shipment_id: number;
+    tracking_code: string;
+    deducted_at: string;
+    books: Array<{
+      book_title: string;
+      quantity: number;
+    }>;
+  }>;
   created_at: string;
+}
+
+interface Staff {
+  id: number;
+  full_name: string;
+  email: string;
+  username: string;
+  role: string;
 }
 
 export function MinistryWarehousesPage() {
@@ -55,6 +91,12 @@ export function MinistryWarehousesPage() {
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showStaffDialog, setShowStaffDialog] = useState(false);
+  const [showStockDialog, setShowStockDialog] = useState(false);
+  const [showReportsDialog, setShowReportsDialog] = useState(false);
+  const [selectedWarehouse, setSelectedWarehouse] = useState<MinistryWarehouse | null>(null);
+  const [availableStaff, setAvailableStaff] = useState<Staff[]>([]);
+  const [selectedStaffIds, setSelectedStaffIds] = useState<number[]>([]);
   const [activeTab, setActiveTab] = useState('warehouses');
   const [newWarehouse, setNewWarehouse] = useState({
     name: '',
@@ -66,7 +108,22 @@ export function MinistryWarehousesPage() {
 
   useEffect(() => {
     fetchWarehouses();
+    fetchAvailableStaff();
   }, []);
+
+  const fetchAvailableStaff = async () => {
+    try {
+      const response = await api.get('/users/', {
+        params: {
+          role: 'ministry_staff',
+          page_size: 100
+        }
+      });
+      setAvailableStaff(response.data.results || response.data || []);
+    } catch (err) {
+      console.error('Error fetching staff:', err);
+    }
+  };
 
   const fetchWarehouses = async () => {
     try {
@@ -95,6 +152,88 @@ export function MinistryWarehousesPage() {
     } catch (err: any) {
       console.error('Error adding warehouse:', err);
       setError('فشل إضافة المخزن');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleManageStaff = async (warehouse: MinistryWarehouse) => {
+    setSelectedWarehouse(warehouse);
+    setSelectedStaffIds(warehouse.staff || []);
+    setShowStaffDialog(true);
+  };
+
+  const handleSaveStaff = async () => {
+    if (!selectedWarehouse) return;
+    
+    try {
+      setLoading(true);
+      await api.patch(`/warehouses/ministry/${selectedWarehouse.id}/`, {
+        staff: selectedStaffIds
+      });
+      alert('✅ تم تحديث الموظفين بنجاح!');
+      setShowStaffDialog(false);
+      fetchWarehouses();
+    } catch (err) {
+      console.error('Error updating staff:', err);
+      alert('فشل في تحديث الموظفين');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleViewStock = async (warehouse: MinistryWarehouse) => {
+    try {
+      setLoading(true);
+      const response = await api.get('/warehouses/stocks/', {
+        params: {
+          ministry_warehouse: warehouse.id,
+          page_size: 500
+        }
+      });
+      
+      setSelectedWarehouse({
+        ...warehouse,
+        stock_items: response.data.results || response.data || []
+      });
+      setShowStockDialog(true);
+    } catch (err) {
+      console.error('Error fetching stock:', err);
+      alert('فشل تحميل المخزون');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleViewReports = async (warehouse: MinistryWarehouse) => {
+    try {
+      setLoading(true);
+      // جلب الشحنات التي خرجت من هذا المخزن
+      const response = await api.get('/warehouses/shipments/', {
+        params: {
+          from_ministry: warehouse.id,
+          status: 'confirmed',
+          page_size: 100
+        }
+      });
+      
+      const shipments = response.data.results || response.data || [];
+      const reports = shipments.map((s: any) => ({
+        id: s.id,
+        shipment_id: s.id,
+        tracking_code: s.tracking_code,
+        deducted_at: s.created_at,
+        books: s.books_details || s.books || []
+      }));
+      
+      setSelectedWarehouse({
+        ...warehouse,
+        deduction_reports: reports
+      });
+      setShowReportsDialog(true);
+    } catch (err) {
+      console.error('Error fetching reports:', err);
+      alert('فشل تحميل التقارير');
     } finally {
       setLoading(false);
     }
@@ -221,13 +360,6 @@ export function MinistryWarehousesPage() {
                   <div className="bg-blue-100 p-3 rounded-lg">
                     <Building2 className="w-8 h-8 text-blue-600" />
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => navigate(`/ministry/warehouse/${warehouse.id}/stock`)}
-                  >
-                    عرض المخزون
-                  </Button>
                 </div>
                 <CardTitle className="text-xl mt-4">{warehouse.name}</CardTitle>
                 <CardDescription className="flex items-center gap-2 mt-2">
@@ -237,24 +369,44 @@ export function MinistryWarehousesPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-600">الموظفين</span>
-                    <span className="flex items-center gap-1 font-semibold">
+                  <div className="flex items-center justify-between text-sm p-3 bg-gray-50 rounded-lg">
+                    <span className="text-gray-600 flex items-center gap-2">
                       <Users className="w-4 h-4" />
-                      {warehouse.staff.length}
+                      الموظفين
+                    </span>
+                    <span className="font-semibold text-blue-600">
+                      {warehouse.staff?.length || 0}
                     </span>
                   </div>
-                  <div className="flex gap-2">
+                  
+                  <div className="grid grid-cols-2 gap-2">
                     <Button
                       variant="outline"
                       size="sm"
-                      className="flex-1"
-                      onClick={() => navigate(`/ministry/warehouse/${warehouse.id}/stock`)}
+                      onClick={() => handleManageStaff(warehouse)}
+                    >
+                      <Users className="w-4 h-4 ml-2" />
+                      الموظفين
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleViewStock(warehouse)}
                     >
                       <Package className="w-4 h-4 ml-2" />
                       المخزون
                     </Button>
                   </div>
+                  
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => handleViewReports(warehouse)}
+                  >
+                    <TrendingUp className="w-4 h-4 ml-2" />
+                    تقارير الخصم
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -281,6 +433,186 @@ export function MinistryWarehousesPage() {
           </Card>
         )}
       </main>
+
+      {/* Staff Management Dialog */}
+      <Dialog open={showStaffDialog} onOpenChange={setShowStaffDialog}>
+        <DialogContent className="max-w-2xl" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>إدارة موظفي المخزن - {selectedWarehouse?.name}</DialogTitle>
+            <DialogDescription>اختر الموظفين (يُنصح باختيار 2 موظفين لكل مخزن)</DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 max-h-96 overflow-y-auto">
+            {availableStaff.map(staff => (
+              <div key={staff.id} className="flex items-center p-3 border rounded-lg hover:bg-gray-50">
+                <input
+                  type="checkbox"
+                  id={`staff-${staff.id}`}
+                  checked={selectedStaffIds.includes(staff.id)}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSelectedStaffIds([...selectedStaffIds, staff.id]);
+                    } else {
+                      setSelectedStaffIds(selectedStaffIds.filter(id => id !== staff.id));
+                    }
+                  }}
+                  className="ml-3 w-4 h-4"
+                />
+                <label htmlFor={`staff-${staff.id}`} className="flex-1 cursor-pointer">
+                  <div className="font-medium">{staff.full_name}</div>
+                  <div className="text-sm text-gray-600">{staff.email}</div>
+                </label>
+              </div>
+            ))}
+          </div>
+          
+          <div className="flex justify-between items-center pt-4 border-t">
+            <span className="text-sm text-gray-600">
+              تم اختيار {selectedStaffIds.length} موظف
+            </span>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setShowStaffDialog(false)}>
+                إلغاء
+              </Button>
+              <Button onClick={handleSaveStaff}>
+                حفظ
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Stock View Dialog */}
+      <Dialog open={showStockDialog} onOpenChange={setShowStockDialog}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="text-xl">مخزون {selectedWarehouse?.name}</DialogTitle>
+            <DialogDescription>جميع الكتب المتوفرة في المخزن</DialogDescription>
+          </DialogHeader>
+          
+          {loading ? (
+            <div className="text-center py-8">
+              <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto" />
+            </div>
+          ) : selectedWarehouse?.stock_items && selectedWarehouse.stock_items.length > 0 ? (
+            <div className="space-y-4">
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <div className="text-center">
+                  <div className="text-3xl font-bold text-blue-600">
+                    {selectedWarehouse.stock_items.reduce((sum, item) => sum + (item.quantity || 0), 0)}
+                  </div>
+                  <div className="text-sm text-gray-600 mt-1">إجمالي الكتب</div>
+                </div>
+              </div>
+              
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>#</TableHead>
+                    <TableHead>المادة</TableHead>
+                    <TableHead>الصف</TableHead>
+                    <TableHead>الفصل</TableHead>
+                    <TableHead className="text-center">الكمية</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {selectedWarehouse.stock_items.map((item, index) => (
+                    <TableRow key={item.id}>
+                      <TableCell>{index + 1}</TableCell>
+                      <TableCell className="font-medium">
+                        {item.book_details?.subject || item.book?.subject_display || item.book?.title || 'غير محدد'}
+                      </TableCell>
+                      <TableCell>{item.book_details?.grade || item.book?.grade_display || 'غير محدد'}</TableCell>
+                      <TableCell>
+                        {item.book_details?.term || (item.term === 'first' ? 'الأول' : item.term === 'second' ? 'الثاني' : item.term)}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
+                          {item.quantity}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <Package className="w-12 h-12 mx-auto mb-2 text-gray-300" />
+              <p>لا يوجد مخزون</p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Deduction Reports Dialog */}
+      <Dialog open={showReportsDialog} onOpenChange={setShowReportsDialog}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="text-xl">تقارير الخصم التلقائي - {selectedWarehouse?.name}</DialogTitle>
+            <DialogDescription>سجل الكتب المخصومة من المخزن بعد إنشاء الشحنات</DialogDescription>
+          </DialogHeader>
+          
+          {loading ? (
+            <div className="text-center py-8">
+              <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto" />
+            </div>
+          ) : selectedWarehouse?.deduction_reports && selectedWarehouse.deduction_reports.length > 0 ? (
+            <div className="space-y-4">
+              <div className="bg-orange-50 p-4 rounded-lg">
+                <div className="text-center">
+                  <div className="text-3xl font-bold text-orange-600">
+                    {selectedWarehouse.deduction_reports.length}
+                  </div>
+                  <div className="text-sm text-gray-600 mt-1">إجمالي عمليات الخصم</div>
+                </div>
+              </div>
+              
+              {selectedWarehouse.deduction_reports.map((report) => (
+                <Card key={report.id} className="border-l-4 border-l-orange-500">
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-lg">شحنة #{report.tracking_code}</CardTitle>
+                      <span className="text-sm text-gray-600">
+                        {new Date(report.deducted_at).toLocaleDateString('ar-YE')}
+                      </span>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>الكتاب</TableHead>
+                          <TableHead className="text-center">الكمية المخصومة</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {report.books.map((book: any, idx: number) => (
+                          <TableRow key={idx}>
+                            <TableCell>
+                              {book.book_details?.subject || book.book?.subject_display || book.book?.title || book.book_title || 'غير محدد'}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <span className="px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm font-medium">
+                                -{book.quantity}
+                              </span>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <TrendingUp className="w-12 h-12 mx-auto mb-2 text-gray-300" />
+              <p>لا توجد عمليات خصم</p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

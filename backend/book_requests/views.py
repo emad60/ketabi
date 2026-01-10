@@ -21,23 +21,27 @@ class ProvinceBookRequestViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         
+        # Get base queryset
+        base_qs = BookRequest.objects.select_related(
+            'created_by', 'reviewed_by'
+        ).prefetch_related('items').order_by('-created_at')
+        
+        # Filter out requests that already have shipments (optional via query param)
+        exclude_shipped = self.request.query_params.get('exclude_shipped', 'false').lower() == 'true'
+        if exclude_shipped:
+            base_qs = base_qs.filter(shipments_from_request__isnull=True)
+        
         # Admin can see everything
         if user.role == 'admin':
-            return BookRequest.objects.all().select_related(
-                'created_by', 'reviewed_by'
-            ).prefetch_related('items').order_by('-created_at')
+            return base_qs
         
         # Province users can only see their own requests
         if user.role in ['province_admin', 'province_staff']:
-            return BookRequest.objects.filter(
-                created_by=user
-            ).select_related('created_by', 'reviewed_by').prefetch_related('items').order_by('-created_at')
+            return base_qs.filter(created_by=user)
         
         # Ministry users can see all requests
         if user.role in ['ministry_admin', 'ministry_staff']:
-            return BookRequest.objects.all().select_related(
-                'created_by', 'reviewed_by'
-            ).prefetch_related('items').order_by('-created_at')
+            return base_qs
         
         return BookRequest.objects.none()
     

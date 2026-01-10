@@ -52,6 +52,15 @@ interface Courier {
   province?: string;
   is_active: boolean;
   assigned_shipments_count?: number;
+  assigned_shipments?: Array<{
+    id: number;
+    tracking_code: string;
+    status: string;
+    status_display?: string;
+    to_school_name?: string;
+    to_province_name?: string;
+    created_at: string;
+  }>;
 }
 
 interface CouriersManagementPageProps {
@@ -66,6 +75,7 @@ export function CouriersManagementPage({ courierType }: CouriersManagementPagePr
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [showViewDialog, setShowViewDialog] = useState(false);
   const [viewCourier, setViewCourier] = useState<Courier | null>(null);
+  const [loadingShipments, setLoadingShipments] = useState(false);
   
   // Dialogs
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -110,13 +120,65 @@ export function CouriersManagementPage({ courierType }: CouriersManagementPagePr
         }
       });
 
-      setCouriers(response.data.results || response.data || []);
+      const couriersList = response.data.results || response.data || [];
+      
+      // Load shipment counts for each courier
+      const couriersWithCounts = await Promise.all(
+        couriersList.map(async (courier: Courier) => {
+          try {
+            const shipmentsResponse = await api.get('/warehouses/shipments/', {
+              params: {
+                assigned_courier: courier.id,
+                page_size: 1
+              }
+            });
+            const count = shipmentsResponse.data.count || (shipmentsResponse.data.results?.length || 0);
+            return { ...courier, assigned_shipments_count: count };
+          } catch {
+            return { ...courier, assigned_shipments_count: 0 };
+          }
+        })
+      );
+
+      setCouriers(couriersWithCounts);
     } catch (error) {
       console.error('Error loading couriers:', error);
       alert('فشل تحميل المناديب');
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadCourierShipments = async (courierId: number) => {
+    try {
+      setLoadingShipments(true);
+      const response = await api.get('/warehouses/shipments/', {
+        params: {
+          assigned_courier: courierId,
+          page_size: 50
+        }
+      });
+      
+      return response.data.results || response.data || [];
+    } catch (error) {
+      console.error('Error loading courier shipments:', error);
+      return [];
+    } finally {
+      setLoadingShipments(false);
+    }
+  };
+
+  const handleViewCourier = async (courier: Courier) => {
+    setViewCourier(courier);
+    setShowViewDialog(true);
+    
+    // Load shipments for this courier
+    const shipments = await loadCourierShipments(courier.id);
+    setViewCourier({
+      ...courier,
+      assigned_shipments: shipments,
+      assigned_shipments_count: shipments.length
+    });
   };
 
   const resetForm = () => {
@@ -264,26 +326,75 @@ export function CouriersManagementPage({ courierType }: CouriersManagementPagePr
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <Input value={searchTerm} onChange={(e:any)=>setSearchTerm(e.target.value)} placeholder="ابحث باسم أو بريد أو هاتف..." />
-          <Select value={statusFilter} onValueChange={(val:any)=>setStatusFilter(val)}>
-            <SelectTrigger>
-              <SelectValue placeholder="حالة" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">الكل</SelectItem>
-              <SelectItem value="active">نشط</SelectItem>
-              <SelectItem value="inactive">معطل</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
         <div className="flex items-center gap-2">
           <Button onClick={handleAdd}>
           <Plus className="w-4 h-4 ml-2" />
           إضافة مندوب
           </Button>
         </div>
+      </div>
+
+      {/* Statistics Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">إجمالي المناديب</p>
+                <p className="text-2xl font-bold text-gray-900">{couriers.length}</p>
+              </div>
+              <Users className="w-10 h-10 text-blue-600 opacity-20" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">المناديب النشطون</p>
+                <p className="text-2xl font-bold text-green-600">
+                  {couriers.filter(c => c.is_active).length}
+                </p>
+              </div>
+              <CheckCircle className="w-10 h-10 text-green-600 opacity-20" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">إجمالي الشحنات المسندة</p>
+                <p className="text-2xl font-bold text-blue-600">
+                  {couriers.reduce((sum, c) => sum + (c.assigned_shipments_count || 0), 0)}
+                </p>
+              </div>
+              <TruckIcon className="w-10 h-10 text-blue-600 opacity-20" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Filters */}
+      <div className="flex items-center gap-3">
+        <Input 
+          value={searchTerm} 
+          onChange={(e:any)=>setSearchTerm(e.target.value)} 
+          placeholder="ابحث باسم أو بريد أو هاتف..." 
+          className="max-w-md"
+        />
+        <Select value={statusFilter} onValueChange={(val:any)=>setStatusFilter(val)}>
+          <SelectTrigger className="w-40">
+            <SelectValue placeholder="حالة" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">الكل</SelectItem>
+            <SelectItem value="active">نشط</SelectItem>
+            <SelectItem value="inactive">معطل</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Statistics */}
@@ -371,12 +482,14 @@ export function CouriersManagementPage({ courierType }: CouriersManagementPagePr
                     </TableCell>
                     <TableCell>
                       {courier.phone ? (
-                        <div className="flex items-center gap-1 text-sm">
-                          <Phone className="w-4 h-4" />
-                          {courier.phone}
+                        <div className="flex items-center gap-1 text-sm font-medium">
+                          <Phone className="w-4 h-4 text-blue-600" />
+                          <a href={`tel:${courier.phone}`} className="text-blue-600 hover:underline">
+                            {courier.phone}
+                          </a>
                         </div>
                       ) : (
-                        <span className="text-gray-400">-</span>
+                        <span className="text-gray-400 text-sm">غير محدد</span>
                       )}
                     </TableCell>
                     {courierType === 'province' && (
@@ -400,9 +513,12 @@ export function CouriersManagementPage({ courierType }: CouriersManagementPagePr
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline">
+                      <Badge 
+                        variant="outline" 
+                        className="bg-blue-50 border-blue-200 text-blue-700 font-semibold"
+                      >
                         <TruckIcon className="w-3 h-3 ml-1" />
-                        {courier.assigned_shipments_count || 0}
+                        {courier.assigned_shipments_count || 0} شحنة
                       </Badge>
                     </TableCell>
                     <TableCell>
@@ -410,7 +526,7 @@ export function CouriersManagementPage({ courierType }: CouriersManagementPagePr
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => { setViewCourier(courier); setShowViewDialog(true); }}
+                          onClick={() => handleViewCourier(courier)}
                         >
                           عرض
                         </Button>
@@ -448,44 +564,117 @@ export function CouriersManagementPage({ courierType }: CouriersManagementPagePr
       {/* Add Dialog */}
       {/* View Courier Dialog */}
       <Dialog open={showViewDialog} onOpenChange={setShowViewDialog}>
-        <DialogContent className="max-w-md" dir="rtl">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto" dir="rtl">
           <DialogHeader>
-            <DialogTitle>تفاصيل المندوب</DialogTitle>
+            <DialogTitle className="text-xl">تفاصيل المندوب - {viewCourier?.full_name}</DialogTitle>
             <DialogDescription>
-              {viewCourier?.full_name}
+              معلومات المندوب والشحنات المسندة له
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3">
-            <div>
-              <Label>الاسم</Label>
-              <div className="font-medium">{viewCourier?.full_name}</div>
-            </div>
-            <div>
-              <Label>اسم المستخدم</Label>
-              <div>{viewCourier?.username}</div>
-            </div>
-            <div>
-              <Label>البريد الإلكتروني</Label>
-              <div>{viewCourier?.email}</div>
-            </div>
-            <div>
-              <Label>الهاتف</Label>
-              <div>{viewCourier?.phone || '-'}</div>
-            </div>
-            {courierType === 'province' && (
+          <div className="space-y-6">
+            {/* Basic Info */}
+            <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
               <div>
-                <Label>المحافظة</Label>
-                <div>{viewCourier?.province || '-'}</div>
+                <Label className="text-gray-600">الاسم الكامل</Label>
+                <div className="font-medium mt-1">{viewCourier?.full_name}</div>
               </div>
-            )}
-            <div>
-              <Label>الشحنات المعينة</Label>
-              <div>{viewCourier?.assigned_shipments_count || 0}</div>
+              <div>
+                <Label className="text-gray-600">اسم المستخدم</Label>
+                <div className="font-medium mt-1">{viewCourier?.username}</div>
+              </div>
+              <div>
+                <Label className="text-gray-600">البريد الإلكتروني</Label>
+                <div className="flex items-center gap-2 mt-1">
+                  <Mail className="w-4 h-4 text-gray-500" />
+                  <span className="font-medium">{viewCourier?.email || '-'}</span>
+                </div>
+              </div>
+              <div>
+                <Label className="text-gray-600">رقم الهاتف</Label>
+                <div className="flex items-center gap-2 mt-1">
+                  <Phone className="w-4 h-4 text-gray-500" />
+                  <span className="font-medium">{viewCourier?.phone || '-'}</span>
+                </div>
+              </div>
+              {courierType === 'province' && (
+                <div>
+                  <Label className="text-gray-600">المحافظة</Label>
+                  <div className="font-medium mt-1">{viewCourier?.province || '-'}</div>
+                </div>
+              )}
+              <div>
+                <Label className="text-gray-600">الحالة</Label>
+                <div className="mt-1">
+                  <Badge className={viewCourier?.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
+                    {viewCourier?.is_active ? (
+                      <><CheckCircle className="w-3 h-3 ml-1" /> نشط</>
+                    ) : (
+                      <><XCircle className="w-3 h-3 ml-1" /> معطل</>
+                    )}
+                  </Badge>
+                </div>
+              </div>
             </div>
-            <div>
-              <Label>الحالة</Label>
-              <div>{viewCourier?.is_active ? 'نشط' : 'معطل'}</div>
+
+            {/* Shipments Section */}
+            <div className="border-t pt-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <TruckIcon className="w-5 h-5 text-blue-600" />
+                  الشحنات المسندة ({viewCourier?.assigned_shipments_count || 0})
+                </h3>
+              </div>
+
+              {loadingShipments ? (
+                <div className="text-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-blue-600 mx-auto" />
+                  <p className="text-sm text-gray-600 mt-2">جاري تحميل الشحنات...</p>
+                </div>
+              ) : viewCourier?.assigned_shipments && viewCourier.assigned_shipments.length > 0 ? (
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {viewCourier.assigned_shipments.map((shipment: any) => (
+                    <div key={shipment.id} className="p-3 border rounded-lg hover:bg-gray-50 transition">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="font-semibold text-blue-600">#{shipment.tracking_code}</span>
+                            <Badge className={
+                              shipment.status === 'delivered' ? 'bg-green-100 text-green-800' :
+                              shipment.status === 'out_for_delivery' ? 'bg-purple-100 text-purple-800' :
+                              shipment.status === 'assigned' ? 'bg-blue-100 text-blue-800' :
+                              'bg-gray-100 text-gray-800'
+                            }>
+                              {shipment.status_display || shipment.status}
+                            </Badge>
+                          </div>
+                          <div className="text-sm text-gray-600">
+                            <div className="flex items-center gap-2">
+                              <span>المستلم:</span>
+                              <span className="font-medium">{shipment.to_school_name || shipment.to_province_name || 'غير محدد'}</span>
+                            </div>
+                            <div className="text-xs text-gray-500 mt-1">
+                              {new Date(shipment.created_at).toLocaleDateString('ar-YE')}
+                            </div>
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => window.open(`/shipments/${shipment.id}`, '_blank')}
+                        >
+                          عرض
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <TruckIcon className="w-12 h-12 mx-auto mb-2 text-gray-300" />
+                  <p>لا توجد شحنات مسندة</p>
+                </div>
+              )}
             </div>
           </div>
 

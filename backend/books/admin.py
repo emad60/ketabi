@@ -1,21 +1,42 @@
 from django.contrib import admin
-from .models import Book
+from .models import Subject, Grade, Term, GradeSubject, Book
+
+
+@admin.register(Subject)
+class SubjectAdmin(admin.ModelAdmin):
+    list_display = ("id", "name", "code", "created_at")
+    search_fields = ("name", "code")
+    ordering = ("name",)
+
+
+@admin.register(Grade)
+class GradeAdmin(admin.ModelAdmin):
+    list_display = ("id", "name", "level", "order", "created_at")
+    list_filter = ("level",)
+    search_fields = ("name",)
+    ordering = ("order",)
+
+
+@admin.register(Term)
+class TermAdmin(admin.ModelAdmin):
+    list_display = ("id", "name", "number", "created_at")
+    search_fields = ("name",)
+    ordering = ("number",)
+
+
+@admin.register(GradeSubject)
+class GradeSubjectAdmin(admin.ModelAdmin):
+    list_display = ("id", "grade", "subject", "created_at")
+    list_filter = ("grade__level", "grade")
+    search_fields = ("grade__name", "subject__name")
+    ordering = ("grade__order", "subject__name")
+    autocomplete_fields = ("grade", "subject")
+
 
 @admin.register(Book)
 class BookAdmin(admin.ModelAdmin):
-    list_display = ("id", "subject_display", "grade_display", "term_display", "edition", "year", "total_quantity")
-    list_filter  = ("subject", "grade_level", "term", "year")
-    search_fields = ("edition",)
-    ordering = ("grade_level", "subject", "term")
-
-    def subject_display(self, obj):
-        return obj.get_subject_display()
-    subject_display.short_description = "المادة"
-
-    def grade_display(self, obj):
-        return obj.get_grade_level_display()
-    grade_display.short_description = "الصف"
-
-    def term_display(self, obj):
-        return obj.get_term_display()
-    term_display.short_description = "الفصل"
+    list_display = ("id", "subject", "grade", "term", "total_quantity")
+    list_filter = ("grade__level", "grade", "term")
+    search_fields = ("subject__name", "grade__name")
+    ordering = ("grade__order", "subject__name", "term__number")
+    autocomplete_fields = ("subject", "grade", "term")

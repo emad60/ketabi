@@ -116,8 +116,8 @@ for item in school_request.items.all():
     BookRequestItem.objects.create(
         request=book_request,
         book=item.book,
-        subject=item.book.get_subject_display() if item.book else 'غير محدد',
-        grade=item.book.get_grade_level_display() if item.book else 'غير محدد',
+        subject=item.book.subject.name if item.book else 'غير محدد',
+        grade=item.book.grade.name if item.book else 'غير محدد',
         quantity=item.quantity
     )
 

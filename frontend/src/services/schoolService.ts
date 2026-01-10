@@ -8,6 +8,17 @@ export interface Province {
   created_at?: string;
 }
 
+export interface Directorate {
+  id: number;
+  name: string;
+  province: number;
+  province_name?: string;
+  code?: string;
+  schools_count?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface School {
   id: number;
   name: string;
@@ -50,6 +61,11 @@ export const schoolService = {
 
   async getProvinces(params?: Record<string, any>): Promise<Province[]> {
     const response = await api.get(ENDPOINTS.PROVINCES.LIST, { params });
+    return response.data.results || response.data;
+  },
+
+  async getDirectorates(params?: Record<string, any>): Promise<Directorate[]> {
+    const response = await api.get(ENDPOINTS.DIRECTORATES.LIST, { params });
     return response.data.results || response.data;
   },
 };

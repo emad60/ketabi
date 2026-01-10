@@ -45,11 +45,14 @@ export default function MinistryProvinceShipmentsPage() {
     notes: '',
   });
 
-  // Fetch approved province requests
+  // Fetch approved province requests (exclude those with shipments)
   const { data: approvedRequests = [], isLoading: requestsLoading } = useQuery({
     queryKey: ['approvedProvinceRequests'],
     queryFn: async () => {
-      const res = await apiService.getProvinceRequests({ status: 'approved' });
+      const res = await apiService.getProvinceRequests({ 
+        status: 'approved',
+        exclude_shipped: 'true'  // 🔥 استبعاد الطلبات التي لها شحنات
+      });
       return Array.isArray(res) ? res : [];
     },
   });
@@ -71,7 +74,7 @@ export default function MinistryProvinceShipmentsPage() {
     },
     onSuccess: (shipment: any) => {
       queryClient.invalidateQueries({ queryKey: ['approvedProvinceRequests'] });
-      alert(`✅ تم إنشاء الشحنة بنجاح!\nرقم التتبع: ${shipment.tracking_code}\n\nتم إرسال إشعار للمحافظة مع التقرير وكود QR`);
+      alert(`✅ تم إنشاء الشحنة بنجاح!\nرقم التتبع: ${shipment.tracking_code}\n\n📦 تم إخفاء الطلب من القائمة تلقائياً\n🔔 تم إرسال إشعار للمحافظة مع التقرير وكود QR`);
       setShowCreateDialog(false);
       setSelectedRequest(null);
       setFormData({ courier_id: '', notes: '' });
@@ -237,7 +240,10 @@ export default function MinistryProvinceShipmentsPage() {
         {/* Requests List */}
         <Card>
           <CardHeader>
-            <CardTitle>الطلبات المعتمدة</CardTitle>
+            <CardTitle>الطلبات المعتمدة الجاهزة للشحن</CardTitle>
+            <p className="text-sm text-gray-600 mt-2">
+              💡 يتم إخفاء الطلبات التي تم إنشاء شحنات لها تلقائياً
+            </p>
           </CardHeader>
           <CardContent>
             {requestsLoading ? (

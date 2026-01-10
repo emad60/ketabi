@@ -39,13 +39,15 @@ interface Book {
   subject_display: string;
   grade_level: string;
   grade_display: string;
+  term?: string;
 }
 
 interface Warehouse {
   id: number;
   name: string;
-  location: string;
-  capacity: number;
+  location?: string;
+  province?: string;
+  capacity?: number;
 }
 
 interface StockEntry {
@@ -78,6 +80,7 @@ export function StockEntryPage({ warehouseType }: StockEntryPageProps) {
   const [currentStock, setCurrentStock] = useState<any[]>([]);
 
   useEffect(() => {
+    console.log('StockEntryPage mounted. warehouseType:', warehouseType);
     loadWarehouses();
     loadBooks();
   }, []);
@@ -109,14 +112,18 @@ export function StockEntryPage({ warehouseType }: StockEntryPageProps) {
         ? '/warehouses/ministry/' 
         : '/warehouses/province/';
       
+      console.log('Loading warehouses from:', endpoint);
       const response = await api.get(endpoint, {
         params: { page_size: 100 }
       });
       
-      setWarehouses(response.data.results || response.data || []);
+      console.log('Warehouses response:', response.data);
+      const warehouseData = response.data.results || response.data || [];
+      console.log('Setting warehouses:', warehouseData);
+      setWarehouses(warehouseData);
     } catch (error) {
       console.error('Error loading warehouses:', error);
-      alert('فشل تحميل المخازن');
+      alert('فشل تحميل المخازن: ' + (error as any)?.response?.data?.detail || 'خطأ غير معروف');
     } finally {
       setLoading(false);
     }
@@ -124,32 +131,41 @@ export function StockEntryPage({ warehouseType }: StockEntryPageProps) {
 
   const loadBooks = async () => {
     try {
+      console.log('Loading books from: /books/');
       const response = await api.get('/books/', {
         params: { page_size: 200 }
       });
       
-      setBooks(response.data.results || response.data || []);
-      setFilteredBooks(response.data.results || response.data || []);
+      console.log('Books response:', response.data);
+      const booksData = response.data.results || response.data || [];
+      console.log('Setting books:', booksData.length);
+      setBooks(booksData);
+      setFilteredBooks(booksData);
     } catch (error) {
       console.error('Error loading books:', error);
-      alert('فشل تحميل الكتب');
+      alert('فشل تحميل الكتب: ' + (error as any)?.response?.data?.detail || 'خطأ غير معروف');
     }
   };
 
   const loadCurrentStock = async () => {
     try {
-      const warehouseKey = warehouseType === 'ministry' 
-        ? 'ministry_warehouse' 
-        : 'province_warehouse';
+      const params: any = { page_size: 500 };
       
-      const response = await api.get('/warehouses/stocks/', {
-        params: {
-          [warehouseKey]: selectedWarehouse,
-          page_size: 200
-        }
-      });
+      // إذا كان هناك مخزن محدد، جلب المخزون لهذا المخزن فقط
+      if (selectedWarehouse) {
+        const warehouseKey = warehouseType === 'ministry' 
+          ? 'ministry_warehouse' 
+          : 'province_warehouse';
+        params[warehouseKey] = selectedWarehouse;
+      }
       
-      setCurrentStock(response.data.results || response.data || []);
+      console.log('Loading stock with params:', params);
+      const response = await api.get('/warehouses/stocks/', { params });
+      
+      console.log('Stock response:', response.data);
+      const stockData = response.data.results || response.data || [];
+      console.log('Setting stock:', stockData.length, 'items');
+      setCurrentStock(stockData);
     } catch (error) {
       console.error('Error loading stock:', error);
     }
@@ -200,62 +216,92 @@ export function StockEntryPage({ warehouseType }: StockEntryPageProps) {
 
     try {
       setSaving(true);
+      let successCount = 0;
+      let failCount = 0;
 
       // إنشاء أو تحديث stock entries في Backend (upsert)
       for (const entry of entries) {
-        const payload: any = {
-          book: entry.book_id,
-          quantity: entry.quantity,
-          term: entry.term
-        };
-
-        const warehouseKey = warehouseType === 'ministry' ? 'ministry_warehouse' : 'province_warehouse';
-        payload[warehouseKey] = parseInt(selectedWarehouse);
-        // Some backend serializers expect the other warehouse field to be present (nullable).
-        if (warehouseKey === 'ministry_warehouse') {
-          payload['province_warehouse'] = null;
-        } else {
-          payload['ministry_warehouse'] = null;
-        }
-
-        // تحقق هل يوجد سجل مخزون لهذا الكتاب/المستودع/الترم
-        const existingRes = await api.get('/warehouses/stocks/', {
-          params: {
+        try {
+          const payload: any = {
             book: entry.book_id,
-            term: entry.term,
-            [warehouseKey]: selectedWarehouse,
-            page_size: 1,
-          }
-        });
+            quantity: entry.quantity,
+            term: entry.term
+          };
 
-        const existing = (existingRes.data.results || existingRes.data || []);
-        if (Array.isArray(existing) && existing.length > 0) {
-          // حدث تعديل: نجمع الكمية الحالية مع المدخلة
-          const stockItem = existing[0];
-          const newQty = (stockItem.quantity || 0) + entry.quantity;
-          await api.patch(`/warehouses/stocks/${stockItem.id}/`, {
-            quantity: newQty
+          const warehouseKey = warehouseType === 'ministry' ? 'ministry_warehouse' : 'province_warehouse';
+          payload[warehouseKey] = parseInt(selectedWarehouse);
+          // Some backend serializers expect the other warehouse field to be present (nullable).
+          if (warehouseKey === 'ministry_warehouse') {
+            payload['province_warehouse'] = null;
+          } else {
+            payload['ministry_warehouse'] = null;
+          }
+
+          console.log('Saving stock entry:', payload);
+
+          // تحقق هل يوجد سجل مخزون لهذا الكتاب/المستودع/الترم
+          const existingRes = await api.get('/warehouses/stocks/', {
+            params: {
+              book: entry.book_id,
+              term: entry.term,
+              [warehouseKey]: selectedWarehouse,
+              page_size: 1,
+            }
           });
-        } else {
-          // إنشاء سجل جديد
-          await api.post('/warehouses/stocks/', payload);
+
+          const existing = (existingRes.data.results || existingRes.data || []);
+          if (Array.isArray(existing) && existing.length > 0) {
+            // حدث تعديل: نجمع الكمية الحالية مع المدخلة
+            const stockItem = existing[0];
+            const newQty = (stockItem.quantity || 0) + entry.quantity;
+            console.log(`Updating stock ${stockItem.id}: ${stockItem.quantity} + ${entry.quantity} = ${newQty}`);
+            await api.patch(`/warehouses/stocks/${stockItem.id}/`, {
+              quantity: newQty
+            });
+          } else {
+            // إنشاء سجل جديد
+            console.log('Creating new stock entry');
+            await api.post('/warehouses/stocks/', payload);
+          }
+          successCount++;
+        } catch (err) {
+          console.error('Error saving entry:', entry, err);
+          failCount++;
         }
       }
 
-      alert('✅ تم حفظ الكميات بنجاح!');
+      if (failCount > 0) {
+        alert(`⚠️ تم حفظ ${successCount} كتاب، فشل ${failCount} كتاب`);
+      } else {
+        alert(`✅ تم حفظ ${successCount} كتاب بنجاح!`);
+      }
       setEntries([]);
       loadCurrentStock();
     } catch (error: any) {
       console.error('Error saving stock:', error);
-      alert('حدث خطأ: ' + (error.response?.data?.detail || 'فشل في حفظ البيانات'));
+      alert('حدث خطأ: ' + (error.response?.data?.detail || JSON.stringify(error.response?.data) || 'فشل في حفظ البيانات'));
     } finally {
       setSaving(false);
     }
   };
 
-  const getCurrentQuantity = (bookId: number) => {
-    const stock = currentStock.find(s => s.book === bookId || s.book?.id === bookId);
-    return stock?.quantity || 0;
+  const getCurrentQuantity = (bookId: number, term?: string) => {
+    // إذا كان هناك مخزن محدد، عرض المخزون لهذا المخزن فقط
+    if (selectedWarehouse) {
+      const stock = currentStock.find(s => {
+        const matchBook = s.book === bookId || s.book?.id === bookId;
+        const matchTerm = !term || s.term === term;
+        return matchBook && matchTerm;
+      });
+      return stock?.quantity || 0;
+    }
+    // إذا لم يكن هناك مخزن محدد، عرض المجموع من جميع المخازن
+    const stocks = currentStock.filter(s => {
+      const matchBook = s.book === bookId || s.book?.id === bookId;
+      const matchTerm = !term || s.term === term;
+      return matchBook && matchTerm;
+    });
+    return stocks.reduce((sum, s) => sum + (s.quantity || 0), 0);
   };
 
   return (
@@ -293,7 +339,9 @@ export function StockEntryPage({ warehouseType }: StockEntryPageProps) {
                 <SelectContent>
                   {warehouses.map(warehouse => (
                     <SelectItem key={warehouse.id} value={warehouse.id.toString()}>
-                      {warehouse.name} - {warehouse.location}
+                      {warehouse.name}
+                      {warehouse.location && ` - ${warehouse.location}`}
+                      {warehouse.province && ` - ${warehouse.province}`}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -301,13 +349,35 @@ export function StockEntryPage({ warehouseType }: StockEntryPageProps) {
             </div>
 
             {selectedWarehouse && (
-              <div className="bg-blue-50 p-4 rounded-lg">
+              <div className="bg-blue-50 p-4 rounded-lg space-y-2">
                 <div className="flex items-center gap-2 text-blue-900">
                   <BookOpen className="w-5 h-5" />
                   <span className="font-semibold">
                     المخزون الحالي: {currentStock.length} نوع كتاب
                   </span>
                 </div>
+                <div className="text-sm text-blue-700">
+                  <p>إجمالي الكميات: {currentStock.reduce((sum, s) => sum + (s.quantity || 0), 0)} كتاب</p>
+                </div>
+                {currentStock.length > 0 && (
+                  <div className="mt-3 max-h-40 overflow-y-auto">
+                    <div className="grid grid-cols-1 gap-2">
+                      {currentStock.slice(0, 5).map((stock, idx) => (
+                        <div key={idx} className="bg-white p-2 rounded text-sm flex justify-between items-center">
+                          <span className="text-gray-700">
+                            {stock.book_details?.subject_display} - {stock.book_details?.grade_display}
+                          </span>
+                          <Badge variant="default">{stock.quantity}</Badge>
+                        </div>
+                      ))}
+                      {currentStock.length > 5 && (
+                        <p className="text-xs text-blue-600 text-center">
+                          وأكثر... ({currentStock.length - 5} أخرى)
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -333,39 +403,59 @@ export function StockEntryPage({ warehouseType }: StockEntryPageProps) {
                   />
                 </div>
 
-                <div className="max-h-64 overflow-y-auto border rounded-lg">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>المادة</TableHead>
-                        <TableHead>الصف</TableHead>
-                        <TableHead>الكمية الحالية</TableHead>
-                        <TableHead>إجراء</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredBooks.slice(0, 10).map(book => (
-                        <TableRow key={book.id}>
-                          <TableCell>{book.subject_display}</TableCell>
-                          <TableCell>{book.grade_display}</TableCell>
-                          <TableCell>
-                            <Badge>{getCurrentQuantity(book.id)}</Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => addEntry(book)}
-                            >
-                              <Plus className="w-4 h-4 ml-1" />
-                              إضافة
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
+                {filteredBooks.length === 0 && searchTerm && (
+                  <p className="text-center text-gray-500 py-4">
+                    لم يتم العثور على كتب تطابق البحث
+                  </p>
+                )}
+
+                {filteredBooks.length > 0 && (
+                  <>
+                    <div className="text-sm text-gray-600">
+                      عرض {Math.min(10, filteredBooks.length)} من {filteredBooks.length} كتاب
+                    </div>
+                    <div className="max-h-64 overflow-y-auto border rounded-lg">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>المادة</TableHead>
+                            <TableHead>الصف</TableHead>
+                            <TableHead>الفصل</TableHead>
+                            <TableHead>الكمية الحالية</TableHead>
+                            <TableHead>إجراء</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {filteredBooks.slice(0, 10).map(book => (
+                            <TableRow key={book.id}>
+                              <TableCell>{book.subject_display}</TableCell>
+                              <TableCell>{book.grade_display}</TableCell>
+                              <TableCell>
+                                <Badge variant="secondary">
+                                  {book.term === 'first' ? 'الأول' : book.term === 'second' ? 'الثاني' : 'غير محدد'}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <Badge>{getCurrentQuantity(book.id, book.term)}</Badge>
+                              </TableCell>
+                              <TableCell>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => addEntry(book)}
+                                  disabled={entries.find(e => e.book_id === book.id) !== undefined}
+                                >
+                                  <Plus className="w-4 h-4 ml-1" />
+                                  {entries.find(e => e.book_id === book.id) ? 'مضاف' : 'إضافة'}
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -462,6 +552,18 @@ export function StockEntryPage({ warehouseType }: StockEntryPageProps) {
         <div className="text-center py-8">
           <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto" />
           <p className="text-gray-600 mt-2">جاري التحميل...</p>
+        </div>
+      )}
+
+      {!loading && warehouses.length === 0 && (
+        <div className="text-center py-8">
+          <p className="text-gray-600">لا توجد مخازن متاحة</p>
+        </div>
+      )}
+
+      {!loading && books.length === 0 && (
+        <div className="text-center py-8">
+          <p className="text-gray-600">لا توجد كتب متاحة</p>
         </div>
       )}
     </div>

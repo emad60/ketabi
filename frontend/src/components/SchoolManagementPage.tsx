@@ -44,11 +44,20 @@ interface SchoolData {
   type: string; // government, private
 }
 
+interface Directorate {
+  id: number;
+  name: string;
+  province: number;
+  province_name: string;
+}
+
 export function SchoolManagementPage() {
   const { token, user } = useAuthStore();
   const [loading, setLoading] = useState(true);
   const [schools, setSchools] = useState<SchoolData[]>([]);
   const [provinces, setProvinces] = useState<Province[]>([]);
+  const [directorates, setDirectorates] = useState<Directorate[]>([]);
+  const [filteredDirectorates, setFilteredDirectorates] = useState<Directorate[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingSchool, setEditingSchool] = useState<SchoolData | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -59,7 +68,7 @@ export function SchoolManagementPage() {
   const [formData, setFormData] = useState({
     name: '',
     province: '',
-    district: '',
+    directorate: '',
     address: '',
     phone: '',
     principal: '',
@@ -71,7 +80,21 @@ export function SchoolManagementPage() {
   useEffect(() => {
     fetchSchools();
     fetchProvinces();
+    fetchDirectorates();
   }, []);
+
+  // Update filtered directorates when province changes
+  useEffect(() => {
+    if (formData.province) {
+      const provinceObj = provinces.find(p => p.name === formData.province);
+      if (provinceObj) {
+        const filtered = directorates.filter(d => d.province === provinceObj.id);
+        setFilteredDirectorates(filtered);
+      }
+    } else {
+      setFilteredDirectorates([]);
+    }
+  }, [formData.province, directorates, provinces]);
 
   const fetchSchools = async () => {
     try {
@@ -106,6 +129,15 @@ export function SchoolManagementPage() {
     }
   };
 
+  const fetchDirectorates = async () => {
+    try {
+      const response = await schoolService.getDirectorates();
+      setDirectorates(response || []);
+    } catch (error) {
+      console.error('Error fetching directorates:', error);
+    }
+  };
+
   const handleOpenDialog = (school?: SchoolData) => {
     if (school) {
       setEditingSchool(school);
@@ -125,7 +157,7 @@ export function SchoolManagementPage() {
       setFormData({
         name: '',
         province: user?.role === 'province_admin' ? user.province_name || '' : '',
-        district: '',
+        directorate: '',
         address: '',
         phone: '',
         principal: '',
@@ -142,10 +174,12 @@ export function SchoolManagementPage() {
       // Find province ID by name or use first match
       const provinceObj = provinces.find(p => p.name === formData.province);
       const provinceId = provinceObj?.id || parseInt(formData.province) || 1;
+      const directorateId = formData.directorate ? parseInt(formData.directorate) : undefined;
 
       const payload: any = {
         name: formData.name,
         province: provinceId,
+        directorate: directorateId,
         type: formData.type,
         address: formData.address || undefined,
         phone: formData.phone || undefined,
@@ -277,13 +311,21 @@ export function SchoolManagementPage() {
               </div>
 
               <div>
-                <Label htmlFor="district">المديرية *</Label>
-                <Input
-                  id="district"
-                  value={formData.district}
-                  onChange={(e) => setFormData({ ...formData, district: e.target.value })}
-                  placeholder="مثال: الصافية"
-                />
+                <Label htmlFor="directorate">المديرية *</Label>
+                <Select 
+                  value={formData.directorate} 
+                  onValueChange={(value) => setFormData({ ...formData, directorate: value })}
+                  disabled={!formData.province}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={formData.province ? "اختر المديرية" : "اختر المحافظة أولاً"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {filteredDirectorates.map((dir) => (
+                      <SelectItem key={dir.id} value={dir.id.toString()}>{dir.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div>
@@ -360,7 +402,7 @@ export function SchoolManagementPage() {
               <Button
                 className="bg-purple-600 hover:bg-purple-700"
                 onClick={handleSubmit}
-                disabled={!formData.name || !formData.province || !formData.district || !formData.address || !formData.type}
+                disabled={!formData.name || !formData.province || !formData.directorate || !formData.address || !formData.type}
               >
                 {editingSchool ? 'حفظ التعديلات' : 'إضافة المدرسة'}
               </Button>

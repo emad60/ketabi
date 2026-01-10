@@ -64,8 +64,8 @@ class Command(BaseCommand):
                     BookRequestItem.objects.create(
                         request=request,
                         book=book,
-                        subject=book.subject,
-                        grade=book.grade_level,
+                        subject=book.subject.name,
+                        grade=book.grade.name,
                         quantity=quantity,
                         approved_quantity=quantity if status_choice == 'approved' else None
                     )

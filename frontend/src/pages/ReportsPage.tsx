@@ -1,17 +1,53 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Label } from '../components/ui/label';
-import { FileText, Download, BarChart3, PieChart, TrendingUp } from 'lucide-react';
+import { Badge } from '../components/ui/badge';
+import { 
+  FileText, 
+  Download, 
+  BarChart3, 
+  PieChart, 
+  TrendingUp, 
+  Package, 
+  TruckIcon, 
+  Loader2,
+  FileSpreadsheet,
+  Calendar,
+  User
+} from 'lucide-react';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../components/ui/table';
 import DashboardTopNav from '../components/DashboardTopNav';
 import { useAuthStore } from '../store/authStore';
+import api from '../services/api';
+
+interface Report {
+  id: number;
+  title: string;
+  report_type: string;
+  scope: string;
+  description: string;
+  file_url: string;
+  uploaded_by_name: string;
+  province_name?: string;
+  created_at: string;
+  file_size_mb: number;
+  downloads_count: number;
+}
 
 const REPORT_TYPES = [
-  { id: 'inventory', label: 'تقرير المخزون', icon: BarChart3 },
-  { id: 'shipments', label: 'تقرير الشحنات', icon: FileText },
-  { id: 'requests', label: 'تقرير الطلبات', icon: PieChart },
-  { id: 'distribution', label: 'تقرير التوزيع', icon: TrendingUp },
+  { id: 'ministry_statistics', label: 'إحصائيات الوزارة', icon: TrendingUp, ministry: true },
+  { id: 'province_statistics', label: 'إحصائيات المحافظة', icon: BarChart3, province: true },
+  { id: 'warehouse_stock', label: 'مخزون المستودعات', icon: Package, both: true },
+  { id: 'shipments', label: 'تقرير الشحنات', icon: TruckIcon, both: true },
 ];
 
 const TIME_PERIODS = [
@@ -26,26 +62,117 @@ const TIME_PERIODS = [
 export function ReportsPage() {
   const { user } = useAuthStore();
   const [selectedReport, setSelectedReport] = useState('');
-  const [timePeriod, setTimePeriod] = useState('month');
   const [loading, setLoading] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [reports, setReports] = useState<Report[]>([]);
+  const isMinistry = user?.role === 'ministry_admin' || user?.role === 'ministry_staff';
 
-  const handleGenerateReport = async () => {
-    setLoading(true);
+  useEffect(() => {
+    loadReports();
+  }, []);
+
+  const loadReports = async () => {
     try {
-      // TODO: Implement API call to generate report
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      alert('تم إنشاء التقرير بنجاح');
-    } catch (err) {
-      alert('فشل إنشاء التقرير');
+      setLoading(true);
+      const scope = isMinistry ? 'ministry' : 'province';
+      const response = await api.get('/warehouses/excel-reports/', {
+        params: { scope, page_size: 100 }
+      });
+      setReports(response.data.results || response.data || []);
+    } catch (error) {
+      console.error('Error loading reports:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDownloadReport = () => {
-    // TODO: Implement report download
-    alert('جاري تحميل التقرير...');
+  const handleGenerateReport = async () => {
+    if (!selectedReport) {
+      alert('الرجاء اختيار نوع التقرير');
+      return;
+    }
+
+    setGenerating(true);
+    try {
+      let endpoint = '';
+      let requestData: any = {};
+
+      switch (selectedReport) {
+        case 'ministry_statistics':
+          endpoint = '/warehouses/excel/generate/ministry-statistics/';
+          break;
+        case 'province_statistics':
+          endpoint = '/warehouses/excel/generate/province-statistics/';
+          break;
+        case 'warehouse_stock':
+          const warehouseId = prompt('أدخل رقم المستودع:');
+          if (!warehouseId) {
+            setGenerating(false);
+            return;
+          }
+          endpoint = '/warehouses/excel/generate/warehouse-stock/';
+          requestData = {
+            warehouse_id: parseInt(warehouseId),
+            warehouse_type: isMinistry ? 'ministry' : 'province'
+          };
+          break;
+        case 'shipments':
+          endpoint = '/warehouses/excel/generate/shipments/';
+          break;
+      }
+
+      const response = await api.post(endpoint, requestData, { 
+        responseType: 'blob',
+        headers: {
+          'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        }
+      });
+      
+      // تحميل الملف مباشرة بدون blob URL
+      const blob = new Blob([response.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      });
+      const filename = `report_${selectedReport}_${new Date().toISOString().split('T')[0]}.xlsx`;
+      
+      // استخدام طريقة التحميل المباشر
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = filename;
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      
+      // تنظيف
+      setTimeout(() => {
+        document.body.removeChild(link);
+        URL.revokeObjectURL(link.href);
+      }, 100);
+      
+      alert('✅ تم توليد التقرير وتحميله بنجاح!');
+      loadReports();
+    } catch (err) {
+      console.error('Error generating report:', err);
+      alert('فشل إنشاء التقرير');
+    } finally {
+      setGenerating(false);
+    }
   };
+
+  const downloadReport = (report: Report) => {
+    if (report.file_url) {
+      window.open(report.file_url, '_blank');
+    }
+  };
+
+  const getReportTypeLabel = (type: string) => {
+    const report = REPORT_TYPES.find(r => r.id === type);
+    return report?.label || type;
+  };
+
+  const filteredReportTypes = REPORT_TYPES.filter(report => {
+    if (isMinistry) return report.ministry || report.both;
+    return report.province || report.both;
+  });
 
   return (
     <div className="min-h-screen bg-gray-50" dir="rtl">
@@ -63,19 +190,19 @@ export function ReportsPage() {
 
         {/* Report Type Selection */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          {REPORT_TYPES.map((report) => {
+          {filteredReportTypes.map((report) => {
             const Icon = report.icon;
             return (
               <Card 
                 key={report.id}
                 className={`cursor-pointer transition-all hover:shadow-md ${
-                  selectedReport === report.id ? 'ring-2 ring-purple-600 shadow-md' : ''
+                  selectedReport === report.id ? 'ring-2 ring-blue-600 shadow-md' : ''
                 }`}
                 onClick={() => setSelectedReport(report.id)}
               >
                 <CardContent className="p-6 text-center">
                   <Icon className={`w-8 h-8 mx-auto mb-3 ${
-                    selectedReport === report.id ? 'text-purple-600' : 'text-gray-400'
+                    selectedReport === report.id ? 'text-blue-600' : 'text-gray-400'
                   }`} />
                   <p className="font-medium text-sm">{report.label}</p>
                 </CardContent>
@@ -88,49 +215,26 @@ export function ReportsPage() {
         {selectedReport && (
           <Card className="mb-6">
             <CardHeader>
-              <CardTitle>إعدادات التقرير</CardTitle>
+              <CardTitle>توليد تقرير {getReportTypeLabel(selectedReport)}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label>الفترة الزمنية</Label>
-                  <Select value={timePeriod} onValueChange={setTimePeriod}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {TIME_PERIODS.map((period) => (
-                        <SelectItem key={period.value} value={period.value}>
-                          {period.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <Label>تنسيق الملف</Label>
-                  <Select defaultValue="pdf">
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="pdf">PDF</SelectItem>
-                      <SelectItem value="excel">Excel</SelectItem>
-                      <SelectItem value="csv">CSV</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
+              <p className="text-sm text-gray-600">
+                سيتم توليد تقرير Excel شامل يحتوي على جميع البيانات والإحصائيات المطلوبة
+              </p>
 
               <div className="flex gap-3 pt-4">
-                <Button onClick={handleGenerateReport} disabled={loading}>
-                  <BarChart3 className="w-4 h-4 ml-2" />
-                  {loading ? 'جاري الإنشاء...' : 'إنشاء التقرير'}
-                </Button>
-                <Button variant="outline" onClick={handleDownloadReport}>
-                  <Download className="w-4 h-4 ml-2" />
-                  تحميل
+                <Button onClick={handleGenerateReport} disabled={generating} className="bg-blue-600 hover:bg-blue-700">
+                  {generating ? (
+                    <>
+                      <Loader2 className="w-4 h-4 ml-2 animate-spin" />
+                      جاري التوليد...
+                    </>
+                  ) : (
+                    <>
+                      <FileSpreadsheet className="w-4 h-4 ml-2" />
+                      توليد وتحميل التقرير (Excel)
+                    </>
+                  )}
                 </Button>
               </div>
             </CardContent>
@@ -140,32 +244,74 @@ export function ReportsPage() {
         {/* Recent Reports */}
         <Card>
           <CardHeader>
-            <CardTitle>التقارير السابقة</CardTitle>
+            <CardTitle>التقارير المحفوظة</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {[
-                { name: 'تقرير المخزون - نوفمبر 2024', date: '2024-11-10', size: '2.4 MB' },
-                { name: 'تقرير الشحنات - أكتوبر 2024', date: '2024-10-28', size: '1.8 MB' },
-                { name: 'تقرير التوزيع - الربع الثالث 2024', date: '2024-10-01', size: '3.2 MB' },
-              ].map((report, index) => (
-                <div 
-                  key={index}
-                  className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <FileText className="w-5 h-5 text-purple-600" />
-                    <div>
-                      <p className="font-medium text-sm">{report.name}</p>
-                      <p className="text-xs text-gray-600">{report.date} • {report.size}</p>
-                    </div>
-                  </div>
-                  <Button variant="ghost" size="sm">
-                    <Download className="w-4 h-4" />
-                  </Button>
-                </div>
-              ))}
-            </div>
+            {loading ? (
+              <div className="text-center py-12">
+                <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-4" />
+                <p className="text-gray-600">جاري التحميل...</p>
+              </div>
+            ) : reports.length === 0 ? (
+              <div className="text-center py-12">
+                <FileSpreadsheet className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-500 text-lg">لا توجد تقارير محفوظة</p>
+                <p className="text-gray-400 text-sm mt-2">قم بتوليد تقرير جديد من الخيارات أعلاه</p>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-right">العنوان</TableHead>
+                    <TableHead className="text-right">النوع</TableHead>
+                    <TableHead className="text-right">بواسطة</TableHead>
+                    <TableHead className="text-right">التاريخ</TableHead>
+                    <TableHead className="text-right">الحجم</TableHead>
+                    <TableHead className="text-right">التحميلات</TableHead>
+                    <TableHead className="text-right">إجراءات</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {reports.map((report) => (
+                    <TableRow key={report.id}>
+                      <TableCell className="font-medium">{report.title}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{getReportTypeLabel(report.report_type)}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <User className="w-4 h-4 text-gray-500" />
+                          <span className="text-sm">{report.uploaded_by_name}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Calendar className="w-4 h-4 text-gray-500" />
+                          <span className="text-sm">{new Date(report.created_at).toLocaleDateString('ar-YE')}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm">{report.file_size_mb} MB</TableCell>
+                      <TableCell>
+                        <Badge className="bg-blue-100 text-blue-800">
+                          <Download className="w-3 h-3 ml-1" />
+                          {report.downloads_count}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => downloadReport(report)}
+                        >
+                          <Download className="w-4 h-4 ml-1" />
+                          تحميل
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       </main>

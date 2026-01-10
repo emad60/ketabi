@@ -25,7 +25,7 @@ export const ProvinceIncomingSchoolRequestsPage: React.FC = () => {
   const [error, setError] = useState('');
   
   // فلاتر
-  const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'draft' | 'submitted' | 'approved' | 'rejected' | 'fulfilled'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<'date' | 'school' | 'quantity'>('date');
 
@@ -60,8 +60,9 @@ export const ProvinceIncomingSchoolRequestsPage: React.FC = () => {
   useEffect(() => {
     let filtered = requests.filter(request => {
       const matchesStatus = filterStatus === 'all' || request.status === filterStatus;
+      const schoolName = request.school_detail?.name || request.school_name || '';
       const matchesSearch =
-        (request.school_name?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false) ||
+        schoolName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (request.id?.toString().includes(searchTerm) ?? false);
       return matchesStatus && matchesSearch;
     });
@@ -70,11 +71,12 @@ export const ProvinceIncomingSchoolRequestsPage: React.FC = () => {
     if (sortBy === 'date') {
       filtered.sort((a, b) => new Date(b.created_at || '').getTime() - new Date(a.created_at || '').getTime());
     } else if (sortBy === 'school') {
-      filtered.sort((a, b) => (a.school_name || '').localeCompare(b.school_name || '', 'ar'));
+      const getSchoolName = (req: SchoolRequest) => req.school_detail?.name || req.school_name || '';
+      filtered.sort((a, b) => getSchoolName(a).localeCompare(getSchoolName(b), 'ar'));
     } else if (sortBy === 'quantity') {
       filtered.sort((a, b) => {
-        const aQty = (a.items || []).reduce((sum, item) => sum + (item.quantity_requested || 0), 0);
-        const bQty = (b.items || []).reduce((sum, item) => sum + (item.quantity_requested || 0), 0);
+        const aQty = (a.items_readonly || a.items || []).reduce((sum: number, item: any) => sum + (item.quantity || item.quantity_requested || 0), 0);
+        const bQty = (b.items_readonly || b.items || []).reduce((sum: number, item: any) => sum + (item.quantity || item.quantity_requested || 0), 0);
         return bQty - aQty;
       });
     }
@@ -137,10 +139,10 @@ export const ProvinceIncomingSchoolRequestsPage: React.FC = () => {
   // حساب إحصائيات
   const stats = {
     total: requests.length,
-    pending: requests.filter(r => r.status === 'pending').length,
+    pending: requests.filter(r => r.status === 'submitted' || r.status === 'draft').length,
     approved: requests.filter(r => r.status === 'approved').length,
     rejected: requests.filter(r => r.status === 'rejected').length,
-    totalBooks: requests.reduce((sum, r) => sum + ((r.items || []).reduce((s, i) => s + (i.quantity_requested || 0), 0)), 0),
+    totalBooks: requests.reduce((sum, r) => sum + ((r.items_readonly || r.items || []).reduce((s: number, i: any) => s + (i.quantity || i.quantity_requested || 0), 0)), 0),
   };
 
   if (loading) {
@@ -161,18 +163,9 @@ export const ProvinceIncomingSchoolRequestsPage: React.FC = () => {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* رأس الصفحة */}
         <div className="mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">طلبات المدارس الواردة</h1>
-              <p className="text-gray-600 mt-1">إدارة واستقبال طلبات الكتب من المدارس</p>
-            </div>
-            <Button 
-              onClick={() => navigate('/province/school-requests')}
-              className="gap-2"
-            >
-              <Plus className="w-4 h-4" />
-              إنشاء طلب جديد
-            </Button>
+          <div className="mb-4">
+            <h1 className="text-3xl font-bold text-gray-900">طلبات المدارس الواردة</h1>
+            <p className="text-gray-600 mt-1">إدارة واستقبال طلبات الكتب من المدارس</p>
           </div>
 
           {error && (
@@ -269,9 +262,11 @@ export const ProvinceIncomingSchoolRequestsPage: React.FC = () => {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="all">الكل</SelectItem>
-                          <SelectItem value="pending">قيد الانتظار</SelectItem>
+                          <SelectItem value="draft">مسودة</SelectItem>
+                          <SelectItem value="submitted">مرسل للمحافظة</SelectItem>
                           <SelectItem value="approved">موافق عليها</SelectItem>
                           <SelectItem value="rejected">مرفوضة</SelectItem>
+                          <SelectItem value="fulfilled">مكتملة</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -311,10 +306,10 @@ export const ProvinceIncomingSchoolRequestsPage: React.FC = () => {
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-1">
                               <School className="w-4 h-4 text-blue-600" />
-                              <p className="font-semibold text-sm">{request.school_name}</p>
+                              <p className="font-semibold text-sm">{request.school_detail?.name || request.school_name || 'مدرسة غير معروفة'}</p>
                             </div>
                             <p className="text-xs text-gray-600 mb-2">
-                              #{request.id} • {(request.items || []).length} كتاب
+                              #{request.id} • {(request.items_readonly || request.items || []).length} كتاب
                             </p>
                             <p className="text-xs text-gray-500">
                               {new Date(request.created_at || '').toLocaleDateString('ar-SA')}
@@ -325,14 +320,19 @@ export const ProvinceIncomingSchoolRequestsPage: React.FC = () => {
                               className={
                                 request.status === 'approved'
                                   ? 'bg-green-100 text-green-800'
-                                  : request.status === 'pending'
+                                  : request.status === 'submitted' || request.status === 'draft'
                                   ? 'bg-yellow-100 text-yellow-800'
-                                  : 'bg-red-100 text-red-800'
+                                  : request.status === 'rejected'
+                                  ? 'bg-red-100 text-red-800'
+                                  : 'bg-blue-100 text-blue-800'
                               }
                             >
-                              {request.status === 'approved' && 'موافق'}
-                              {request.status === 'pending' && 'معلق'}
+                              {request.status === 'approved' && 'مقبول'}
+                              {request.status === 'submitted' && 'مرسل'}
+                              {request.status === 'draft' && 'مسودة'}
                               {request.status === 'rejected' && 'مرفوض'}
+                              {request.status === 'fulfilled' && 'مكتمل'}
+                              {request.status === 'cancelled' && 'ملغى'}
                             </Badge>
                             <Eye className="w-4 h-4 text-gray-400" />
                           </div>
@@ -364,7 +364,7 @@ export const ProvinceIncomingSchoolRequestsPage: React.FC = () => {
                       <School className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
                       <div className="flex-1">
                         <p className="text-xs text-gray-600">المدرسة</p>
-                        <p className="font-semibold text-sm">{selectedRequest.school_name}</p>
+                        <p className="font-semibold text-sm">{selectedRequest.school_detail?.name || selectedRequest.school_name || 'مدرسة غير معروفة'}</p>
                       </div>
                     </div>
                   </div>
@@ -381,14 +381,16 @@ export const ProvinceIncomingSchoolRequestsPage: React.FC = () => {
                         className={
                           selectedRequest.status === 'approved'
                             ? 'bg-green-100 text-green-800'
-                            : selectedRequest.status === 'pending'
+                            : selectedRequest.status === 'submitted' || selectedRequest.status === 'draft'
                             ? 'bg-yellow-100 text-yellow-800'
                             : 'bg-red-100 text-red-800'
                         }
                       >
-                        {selectedRequest.status === 'approved' && 'موافق'}
-                        {selectedRequest.status === 'pending' && 'معلق'}
+                        {selectedRequest.status === 'approved' && 'مقبول'}
+                        {selectedRequest.status === 'submitted' && 'مرسل'}
+                        {selectedRequest.status === 'draft' && 'مسودة'}
                         {selectedRequest.status === 'rejected' && 'مرفوض'}
+                        {selectedRequest.status === 'fulfilled' && 'مكتمل'}
                       </Badge>
                     </div>
                     <div className="flex justify-between">
@@ -399,12 +401,12 @@ export const ProvinceIncomingSchoolRequestsPage: React.FC = () => {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">عدد الكتب</span>
-                      <span className="font-medium">{(selectedRequest.items || []).length}</span>
+                      <span className="font-medium">{(selectedRequest.items_readonly || selectedRequest.items || []).length}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">الكمية الإجمالية</span>
                       <span className="font-medium text-purple-600">
-                        {(selectedRequest.items || []).reduce((sum, item) => sum + (item.quantity_requested || 0), 0)} كتاب
+                        {(selectedRequest.items_readonly || selectedRequest.items || []).reduce((sum: number, item: any) => sum + (item.quantity || item.quantity_requested || 0), 0)} كتاب
                       </span>
                     </div>
                   </div>
@@ -413,17 +415,17 @@ export const ProvinceIncomingSchoolRequestsPage: React.FC = () => {
                   <div>
                     <h4 className="text-sm font-semibold mb-2">الكتب المطلوبة:</h4>
                     <div className="space-y-2 max-h-48 overflow-y-auto">
-                      {(selectedRequest.items || []).map((item, idx) => (
+                      {(selectedRequest.items_readonly || selectedRequest.items || []).map((item: any, idx: number) => (
                         <div key={idx} className="p-2 bg-gray-50 rounded text-xs">
-                          <p className="font-medium">{item.book_title}</p>
-                          <p className="text-gray-600">الكمية: {item.quantity_requested}</p>
+                          <p className="font-medium">{item.book_detail?.title || item.book_title || 'كتاب غير معروف'}</p>
+                          <p className="text-gray-600">الكمية: {item.quantity || item.quantity_requested || 0}</p>
                         </div>
                       ))}
                     </div>
                   </div>
 
                   {/* إجراءات */}
-                  {selectedRequest.status === 'pending' && (
+                  {(selectedRequest.status === 'submitted' || selectedRequest.status === 'draft') && (
                     <div className="space-y-2 pt-4 border-t">
                       <Button
                         onClick={handleApprove}

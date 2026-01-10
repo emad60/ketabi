@@ -48,6 +48,10 @@ export const ENDPOINTS = {
     LIST: '/provinces/',
     DETAIL: (id: number) => `/provinces/${id}/`,
   },
+  DIRECTORATES: {
+    LIST: '/directorates/',
+    DETAIL: (id: number) => `/directorates/${id}/`,
+  },
   SCHOOLS: {
     LIST: '/schools/',
     DETAIL: (id: number) => `/schools/${id}/`,

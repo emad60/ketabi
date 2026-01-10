@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import bookService from '../services/bookService';
 import { apiService } from '../services/apiService';
+import api from '../services/api';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../components/ui/select';
 
 // نموذج إنشاء طلب كتب من المحافظة للوزارة
@@ -22,53 +23,50 @@ export default function ProvinceCreateBookRequestPage() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
 
+  // قوائم المواد والصفوف والفصول من قاعدة البيانات
+  const [subjects, setSubjects] = useState<Array<{id: number, name: string}>>([]);
+  const [grades, setGrades] = useState<Array<{id: number, name: string}>>([]);
+  const [terms, setTerms] = useState<Array<{id: number, name: string, number: number}>>([]);
+  const [loading, setLoading] = useState(true);
+
   // اسم المحافظة (جلبه من بيانات المستخدم إن وُجد)
   const provinceName = user?.province || 'أمانة العاصمة صنعاء';
 
   useEffect(()=>{
     (async ()=>{
       try{
-        const data = await bookService.getBooks();
-        setBookOptions(Array.isArray(data) ? data.map(b=>({id: b.id, title: b.title, grade_level: b.grade_level, subject: b.subject})) : []);
+        setLoading(true);
+        // جلب الكتب
+        const booksData = await bookService.getBooks();
+        setBookOptions(Array.isArray(booksData) ? booksData.map(b=>({id: b.id, title: b.title, grade_level: b.grade_level, subject: b.subject})) : []);
+        
+        // جلب المواد
+        const subjectsRes = await api.get('/subjects/');
+        setSubjects(Array.isArray(subjectsRes.data) ? subjectsRes.data : subjectsRes.data.results || []);
+        
+        // جلب الصفوف
+        const gradesRes = await api.get('/grades/');
+        setGrades(Array.isArray(gradesRes.data) ? gradesRes.data : gradesRes.data.results || []);
+        
+        // جلب الفصول
+        const termsRes = await api.get('/terms/');
+        setTerms(Array.isArray(termsRes.data) ? termsRes.data : termsRes.data.results || []);
       }catch(err){
-        console.error('Failed to load books:', err);
+        console.error('Failed to load data:', err);
         setBookOptions([]);
+        setSubjects([]);
+        setGrades([]);
+        setTerms([]);
+      }finally{
+        setLoading(false);
       }
     })();
   },[]);
 
-  // قوائم المواد والصفوف والفصول
-  const SUBJECTS = [
-    'رياضيات',
-    'لغة عربية',
-    'لغة إنجليزية',
-    'علوم',
-    'دراسات اجتماعية',
-    'تربية إسلامية',
-    'حاسوب',
-    'تربية فنية',
-    'تربية رياضية',
-  ];
-
-  const GRADES = [
-    'الصف الأول',
-    'الصف الثاني',
-    'الصف الثالث',
-    'الصف الرابع',
-    'الصف الخامس',
-    'الصف السادس',
-    'الصف السابع',
-    'الصف الثامن',
-    'الصف التاسع',
-  ];
-
-  const TERMS = [
-    { value: 'first', label: 'الفصل الدراسي الأول' },
-    { value: 'second', label: 'الفصل الدراسي الثاني' },
-  ];
-
   // إضافة كتاب
   const handleAddBook = () => {
+    console.log('Adding book with quantity:', bookQty);
+    
     // If a concrete book is selected, use it
     if (selectedBookId) {
       if (!bookQty || bookQty <= 0) return;
@@ -88,7 +86,11 @@ export default function ProvinceCreateBookRequestPage() {
     if (!bookQty || bookQty <= 0) return;
 
     // Create item without book_id; backend will try to match by subject/grade
-    const label = `${selectedSubject} — ${selectedGrade} — ${TERMS.find(t=>t.value===selectedTerm)?.label || ''}`;
+    const subjectName = subjects.find(s=>s.id.toString()===selectedSubject)?.name || selectedSubject;
+    const gradeName = grades.find(g=>g.id.toString()===selectedGrade)?.name || selectedGrade;
+    const termName = terms.find(t=>t.id.toString()===selectedTerm)?.name || selectedTerm;
+    const label = `${subjectName} — ${gradeName} — ${termName}`;
+    console.log(`Adding item: ${label}, Quantity: ${bookQty}, Subject: ${selectedSubject}, Grade: ${selectedGrade}, Term: ${selectedTerm}`);
     setBooks([...books, { book_id: 0, book_title: label, quantity: bookQty, subject: selectedSubject, grade: selectedGrade, term: selectedTerm } as any]);
     // reset
     setSelectedSubject('');
@@ -119,7 +121,9 @@ export default function ProvinceCreateBookRequestPage() {
         })
       };
 
+      console.log('Submitting payload:', JSON.stringify(payload, null, 2));
       const res = await apiService.createProvinceRequest(payload);
+      console.log('Response:', res);
       // بعد النجاح، انتقل إلى صفحة الطلبات أو اعرض رسالة
       alert('تم إرسال طلب المحافظة إلى الوزارة بنجاح');
       navigate('/province/book-requests');
@@ -135,6 +139,14 @@ export default function ProvinceCreateBookRequestPage() {
     <div style={{maxWidth: 650, margin: '0 auto', padding: 24}}>
       <h2 style={{fontWeight:'bold', fontSize:22, marginBottom: 8}}>إنشاء طلب كتب جديد</h2>
       <div style={{color:'#888', marginBottom:24, fontSize:15}}>أدخل معلومات الكتب المطلوبة من الوزارة</div>
+      
+      {loading && (
+        <div style={{textAlign:'center', padding:40, color:'#888'}}>
+          جاري تحميل البيانات...
+        </div>
+      )}
+      
+      {!loading && (
       <form onSubmit={handleSubmit} style={{background:'#fff', borderRadius:12, boxShadow:'0 2px 8px #0001', padding:24}}>
         <div style={{display:'flex', gap:16, marginBottom:16}}>
           <div style={{flex:1}}>
@@ -160,7 +172,7 @@ export default function ProvinceCreateBookRequestPage() {
                   <SelectValue placeholder="اختر المادة" />
                 </SelectTrigger>
                 <SelectContent>
-                  {SUBJECTS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  {subjects.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -171,7 +183,7 @@ export default function ProvinceCreateBookRequestPage() {
                   <SelectValue placeholder="اختر الصف" />
                 </SelectTrigger>
                 <SelectContent>
-                  {GRADES.map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}
+                  {grades.map(g => <SelectItem key={g.id} value={g.id.toString()}>{g.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -182,13 +194,24 @@ export default function ProvinceCreateBookRequestPage() {
                   <SelectValue placeholder="اختر الفصل" />
                 </SelectTrigger>
                 <SelectContent>
-                  {TERMS.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                  {terms.map(t => <SelectItem key={t.id} value={t.id.toString()}>{t.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div style={{flex:1}}>
               <label style={{fontSize:13, color:'#555', display:'block', marginBottom:6}}>الكمية</label>
-              <input type="number" min={1} value={bookQty || ''} onChange={e=>setBookQty(Number(e.target.value))} placeholder="الكمية" style={{width:'100%',padding:8,border:'1px solid #ddd',borderRadius:6}} />
+              <input 
+                type="number" 
+                min={1} 
+                value={bookQty || ''} 
+                onChange={e => {
+                  const val = parseInt(e.target.value) || 0;
+                  console.log('Quantity input changed:', e.target.value, '-> parsed:', val);
+                  setBookQty(val);
+                }} 
+                placeholder="الكمية" 
+                style={{width:'100%',padding:8,border:'1px solid #ddd',borderRadius:6}} 
+              />
             </div>
             <div style={{display:'flex',alignItems:'flex-end'}}>
               <button type="button" onClick={handleAddBook} style={{background:'#8b5cf6',color:'#fff',border:'none',borderRadius:6,padding:'8px 12px',fontWeight:'bold',fontSize:18,cursor:'pointer'}}>+</button>
@@ -231,6 +254,7 @@ export default function ProvinceCreateBookRequestPage() {
           <button type="submit" disabled={submitting || books.length===0} style={{background:'#8b5cf6',color:'#fff',border:'none',borderRadius:6,padding:'10px 28px',fontWeight:'bold',fontSize:16,cursor:'pointer',opacity:submitting||books.length===0?0.7:1}}>إرسال الطلب</button>
         </div>
       </form>
+      )}
     </div>
   );
 }

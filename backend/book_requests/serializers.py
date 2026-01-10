@@ -64,6 +64,7 @@ class BookRequestSerializer(serializers.ModelSerializer):
     province_name = serializers.SerializerMethodField()
     total_quantity = serializers.SerializerMethodField()
     items_count = serializers.SerializerMethodField()
+    has_shipment = serializers.SerializerMethodField()
     
     class Meta:
         model = BookRequest
@@ -81,11 +82,16 @@ class BookRequestSerializer(serializers.ModelSerializer):
             'items',
             'total_quantity',
             'items_count',
+            'has_shipment',
             'created_at',
             'updated_at',
             'reviewed_at',
         ]
         read_only_fields = ['id', 'request_number', 'created_at', 'updated_at', 'created_by', 'reviewed_by', 'reviewed_at']
+    
+    def get_has_shipment(self, obj):
+        """Check if this request has any shipments created from it"""
+        return obj.shipments_from_request.exists()
     
     def get_province_name(self, obj):
         user = getattr(obj, 'created_by', None)
@@ -130,22 +136,24 @@ class BookRequestSerializer(serializers.ModelSerializer):
             if 'book' in item_data and item_data['book']:
                 book = item_data['book']
             else:
-                # Try to find book by subject and grade
-                # Convert grade name to number and subject name to code
-                grade_text = item_data.get('grade', '')
-                subject_text = item_data.get('subject', '')
+                # Try to find book by subject_id and grade_id
+                subject_id = item_data.get('subject')
+                grade_id = item_data.get('grade')
+                term_id = item_data.get('term')
                 
-                grade_number = GRADE_NAME_TO_NUMBER.get(grade_text, grade_text)
-                subject_code = SUBJECT_NAME_TO_CODE.get(subject_text, subject_text)
-                
-                try:
-                    # Use filter().first() instead of get() to avoid MultipleObjectsReturned
-                    book = Book.objects.filter(
-                        subject=subject_code,
-                        grade_level=grade_number
-                    ).first()
-                except Book.DoesNotExist:
-                    pass
+                if subject_id and grade_id:
+                    try:
+                        # Use filter().first() instead of get() to avoid MultipleObjectsReturned
+                        filters = {
+                            'subject_id': subject_id,
+                            'grade_id': grade_id,
+                        }
+                        if term_id:
+                            filters['term_id'] = term_id
+                        
+                        book = Book.objects.filter(**filters).first()
+                    except (Book.DoesNotExist, ValueError, TypeError):
+                        pass
             
             BookRequestItem.objects.create(
                 request=request,
@@ -174,21 +182,24 @@ class BookRequestSerializer(serializers.ModelSerializer):
                 if 'book' in item_data and item_data['book']:
                     book = item_data['book']
                 else:
-                    # Convert grade name to number and subject name to code
-                    grade_text = item_data.get('grade', '')
-                    subject_text = item_data.get('subject', '')
+                    # Try to find book by subject_id and grade_id
+                    subject_id = item_data.get('subject')
+                    grade_id = item_data.get('grade')
+                    term_id = item_data.get('term')
                     
-                    grade_number = GRADE_NAME_TO_NUMBER.get(grade_text, grade_text)
-                    subject_code = SUBJECT_NAME_TO_CODE.get(subject_text, subject_text)
-                    
-                    try:
-                        # Use filter().first() instead of get() to avoid MultipleObjectsReturned
-                        book = Book.objects.filter(
-                            subject=subject_code,
-                            grade_level=grade_number
-                        ).first()
-                    except Book.DoesNotExist:
-                        pass
+                    if subject_id and grade_id:
+                        try:
+                            # Use filter().first() instead of get() to avoid MultipleObjectsReturned
+                            filters = {
+                                'subject_id': subject_id,
+                                'grade_id': grade_id,
+                            }
+                            if term_id:
+                                filters['term_id'] = term_id
+                            
+                            book = Book.objects.filter(**filters).first()
+                        except (Book.DoesNotExist, ValueError, TypeError):
+                            pass
                 
                 BookRequestItem.objects.create(
                     request=instance,

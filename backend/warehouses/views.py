@@ -62,11 +62,29 @@ class ProvinceWarehouseViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         """
         Everyone can view
-        Only ministry staff can create/update/delete
+        Ministry staff can create/delete
+        Ministry staff + Province admin/staff can update their own warehouses
         """
-        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+        if self.action in ['create', 'destroy']:
             return [IsMinistryStaff()]
+        elif self.action in ['update', 'partial_update']:
+            # Allow province users to update their own warehouses
+            return [IsAuthenticated()]
         return [IsAuthenticated()]
+
+    def perform_update(self, serializer):
+        """تأكد من أن موظفي المحافظة يحدثون مخازنهم فقط"""
+        user = self.request.user
+        instance = self.get_object()
+        
+        # موظفو المحافظة يمكنهم تحديث مخازن محافظتهم فقط
+        if hasattr(user, 'role') and user.role in ['province_admin', 'province_staff']:
+            if hasattr(user, 'province') and user.province:
+                if instance.province != user.province:
+                    from rest_framework.exceptions import PermissionDenied
+                    raise PermissionDenied('لا يمكنك تحديث مخازن محافظات أخرى')
+        
+        serializer.save()
 
     def get_queryset(self):
         user = self.request.user
@@ -92,7 +110,7 @@ class ShipmentViewSet(viewsets.ModelViewSet):
     ordering = ["-created_at"]
     
     def create(self, request, *args, **kwargs):
-        """Override create to add detailed logging"""
+        """Override create to add detailed logging, generate QR code, and deduct inventory"""
         import logging
         logger = logging.getLogger(__name__)
         
@@ -102,31 +120,65 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         try:
             response = super().create(request, *args, **kwargs)
 
+            shipment_id = response.data.get('id') or response.data.get('pk') or response.data.get('ID')
+            created_shipment = None
+            
+            if shipment_id:
+                created_shipment = Shipment.objects.filter(pk=shipment_id).first()
+            
+            # Generate QR code for the shipment
+            if created_shipment:
+                try:
+                    from .qr_generator import generate_shipment_qr_code
+                    # Generate QR code with 72 hours expiry
+                    qr_result = generate_shipment_qr_code(shipment_id, expire_hours=72)
+                    
+                    # Update shipment with QR code data
+                    created_shipment.qr_token = qr_result['token']
+                    created_shipment.qr_code_image = qr_result['qr_image_base64']
+                    created_shipment.qr_expires_at = qr_result['expires_at']
+                    created_shipment.save(update_fields=['qr_token', 'qr_code_image', 'qr_expires_at'])
+                    
+                    logger.info(f"[SHIPMENT CREATE] QR Code generated for shipment #{shipment_id}")
+                    
+                    # Update response data with QR info
+                    response.data['qr_token'] = qr_result['token']
+                    response.data['qr_code_image'] = qr_result['qr_image_base64']
+                    response.data['qr_expires_at'] = qr_result['expires_at'].isoformat()
+                except Exception as e:
+                    logger.exception(f'[SHIPMENT CREATE] Failed to generate QR code: {e}')
+            
+            # Deduct inventory for the shipment
+            if created_shipment:
+                try:
+                    from .inventory_service import InventoryService
+                    deduction_result = InventoryService.deduct_inventory_for_shipment(created_shipment)
+                    
+                    if deduction_result['success']:
+                        logger.info(
+                            f"[SHIPMENT CREATE] Inventory deducted successfully for shipment #{shipment_id}: "
+                            f"{deduction_result['message']}"
+                        )
+                        response.data['inventory_deducted'] = True
+                        response.data['deducted_items'] = deduction_result['deducted_items']
+                    else:
+                        logger.warning(
+                            f"[SHIPMENT CREATE] Failed to deduct inventory for shipment #{shipment_id}: "
+                            f"{deduction_result['message']}"
+                        )
+                        response.data['inventory_deducted'] = False
+                        response.data['inventory_errors'] = deduction_result['errors']
+                except Exception as e:
+                    logger.exception(f'[SHIPMENT CREATE] Error during inventory deduction: {e}')
+                    response.data['inventory_deducted'] = False
+                    response.data['inventory_error'] = str(e)
+
             # After successful creation, notify province staff about incoming shipment
             try:
-                shipment_id = response.data.get('id') or response.data.get('pk') or response.data.get('ID')
-                if shipment_id:
-                    created_shipment = Shipment.objects.filter(pk=shipment_id).first()
-                    if created_shipment and created_shipment.to_province:
-                        # Create internal notifications for province staff
-                        for staff in created_shipment.to_province.staff.all():
-                            Notification.objects.create(
-                                user=staff,
-                                message=f"شحنة واردة من الوزارة: الشحنة #{created_shipment.id} - {created_shipment.tracking_code or ''}"
-                            )
-                            # Send push (if firebase configured)
-                            try:
-                                FirebaseService.send_to_user(
-                                    user=staff,
-                                    title="شحنة واردة",
-                                    body=f"ستصل شحنة جديدة للمنطقة: #{created_shipment.id}",
-                                    data={
-                                        'type': 'incoming_shipment',
-                                        'shipment_id': str(created_shipment.id)
-                                    }
-                                )
-                            except Exception:
-                                logger.exception('Failed to send push to province staff')
+                if created_shipment and created_shipment.to_province:
+                    # استخدام خدمة الإشعارات الشاملة
+                    from notifications.notification_service import NotificationService
+                    NotificationService.notify_shipment_created(created_shipment)
 
             except Exception:
                 logger.exception('[SHIPMENT CREATE] Notification sending failed')
@@ -134,15 +186,8 @@ class ShipmentViewSet(viewsets.ModelViewSet):
             # If shipment was created with an assigned courier, notify the courier as well
             try:
                 if created_shipment and created_shipment.assigned_courier:
-                    assigned = created_shipment.assigned_courier
-                    Notification.objects.create(
-                        user=assigned,
-                        message=f"تم إسناد الشحنة #{created_shipment.id} إليك. يرجى البدء بالإجراءات اللازمة."
-                    )
-                    try:
-                        notify_shipment_assigned(created_shipment)
-                    except Exception:
-                        logger.exception('Failed to notify assigned courier after create')
+                    from notifications.notification_service import NotificationService
+                    NotificationService.notify_shipment_assigned(created_shipment)
             except Exception:
                 logger.exception('[SHIPMENT CREATE] Assigned courier notification failed')
 
@@ -168,11 +213,35 @@ class ShipmentViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         qs = super().get_queryset()
-
-        # Province admins and staff can see shipments to their province
+        
+        # فلترة حسب نوع الشحنة (وارد/صادر)
+        shipment_type = self.request.query_params.get('shipment_type')
+        from_province = self.request.query_params.get('from_province')
+        
+        if shipment_type == 'province_to_school':
+            # الشحنات من المحافظة للمدارس (to_school_name موجود و from_ministry فارغ)
+            qs = qs.filter(to_school_name__isnull=False).exclude(to_school_name='')
+            if from_province:
+                # نفلتر الشحنات اللي created من province معينة عن طريق related_school_request
+                from school_requests.models import SchoolRequest
+                from schools.models import School
+                # جلب المدارس التابعة للمحافظة
+                schools = School.objects.filter(province__name=from_province)
+                school_names = list(schools.values_list('name', flat=True))
+                qs = qs.filter(to_school_name__in=school_names)
+        
+        # Province admins and staff can see shipments to their province OR from their province
         if getattr(user, "role", None) in ["province_admin", "province_staff"]:
             if hasattr(user, "province") and user.province:
-                return qs.filter(to_province__province=user.province)
+                # إذا لم يحدد نوع شحنة، اعرض الواردة فقط (السلوك الافتراضي)
+                if not shipment_type:
+                    return qs.filter(to_province__province=user.province)
+                # إذا حدد province_to_school، فلتر حسب المحافظة
+                elif shipment_type == 'province_to_school':
+                    from schools.models import School
+                    schools = School.objects.filter(province__name=user.province)
+                    school_names = list(schools.values_list('name', flat=True))
+                    return qs.filter(to_school_name__in=school_names)
             # Fallback to warehouses they are staff of
             return qs.filter(to_province__in=user.province_warehouses.all())
 
@@ -258,8 +327,22 @@ class WarehouseStockViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         qs = super().get_queryset()
-        if getattr(user, "role", None) == "province_staff":
-            return qs.filter(province_warehouse__in=user.province_warehouses.all())
+        
+        # Filter based on user role
+        if getattr(user, "role", None) in ["province_admin", "province_staff", "province_warehouse"]:
+            # Get province warehouses for this user's province
+            from .models import ProvinceWarehouse
+            province_warehouses = ProvinceWarehouse.objects.filter(
+                province=user.province
+            ) if hasattr(user, 'province') and user.province else []
+            
+            if province_warehouses:
+                return qs.filter(province_warehouse__in=province_warehouses)
+            else:
+                # Return empty if no warehouse found
+                return qs.none()
+        
+        # For ministry users, return all
         return qs
 
     @action(detail=False, methods=["post"])
@@ -401,6 +484,12 @@ def ministry_dashboard_stats(request):
     إحصائيات Dashboard للوزارة
     Returns comprehensive statistics for Ministry Dashboard
     """
+    from schools.models import Province, School
+    
+    # إحصائيات المحافظات والمدارس
+    total_provinces = Province.objects.count()
+    total_schools = School.objects.count()
+    
     # إحصائيات المستودعات
     ministry_warehouses_count = MinistryWarehouse.objects.count()
     province_warehouses_count = ProvinceWarehouse.objects.count()
@@ -427,6 +516,16 @@ def ministry_dashboard_stats(request):
         'canceled': shipments.filter(status='canceled').count(),
     }
     
+    # حساب الشحنات المعلقة (pending + assigned + out_for_delivery)
+    pending_shipments = shipments.filter(
+        status__in=['pending', 'assigned', 'out_for_delivery']
+    ).count()
+    
+    # حساب الشحنات المكتملة (delivered + confirmed)
+    delivered_shipments = shipments.filter(
+        status__in=['delivered', 'confirmed']
+    ).count()
+    
     # إحصائيات المندوبين
     ministry_couriers = User.objects.filter(role='ministry_courier')
     total_ministry_couriers = ministry_couriers.count()
@@ -436,8 +535,8 @@ def ministry_dashboard_stats(request):
     
     # إحصائيات طلبات المدارس
     school_requests = SchoolRequest.objects.all()
-    total_requests = school_requests.count()
-    requests_by_status = {
+    total_school_requests = school_requests.count()
+    school_requests_by_status = {
         'pending': school_requests.filter(status='pending').count(),
         'approved': school_requests.filter(status='approved').count(),
         'rejected': school_requests.filter(status='rejected').count(),
@@ -460,7 +559,42 @@ def ministry_dashboard_stats(request):
     shipments_last_30_days = recent_shipments.count()
     completed_last_30_days = recent_shipments.filter(status='confirmed').count()
     
+    # إحصائيات المحافظات الفردية
+    provinces = Province.objects.all()
+    province_stats = []
+    for province in provinces:
+        # حساب طلبات المحافظة
+        province_book_requests = BookRequest.objects.filter(
+            created_by__province=province.name
+        )
+        pending_requests = province_book_requests.filter(status='pending').count()
+        
+        # حساب الشحنات النشطة للمحافظة
+        active_shipments = Shipment.objects.filter(
+            to_province__province=province.name,
+            status__in=['pending', 'assigned', 'out_for_delivery']
+        ).count()
+        
+        province_stats.append({
+            'id': province.id,
+            'name': province.name,
+            'pending_requests': pending_requests,
+            'active_shipments': active_shipments,
+        })
+    
     return Response({
+        # بيانات متوافقة مع Frontend
+        'total_provinces': total_provinces,
+        'total_schools': total_schools,
+        'active_requests': province_requests_by_status['pending'],
+        'pending_shipments': pending_shipments,
+        'delivered_shipments': delivered_shipments,
+        'total_books_distributed': delivered_shipments * 100,  # تقدير
+        'warehouse_stock': total_books_in_stock,
+        'active_couriers': active_couriers,
+        'province_stats': province_stats,
+        
+        # بيانات تفصيلية إضافية
         'warehouses': {
             'ministry_warehouses': ministry_warehouses_count,
             'province_warehouses': province_warehouses_count,
@@ -481,8 +615,8 @@ def ministry_dashboard_stats(request):
             'active_couriers': active_couriers,
         },
         'school_requests': {
-            'total': total_requests,
-            'by_status': requests_by_status,
+            'total': total_school_requests,
+            'by_status': school_requests_by_status,
         },
         'province_requests': {
             'total': total_province_requests,
@@ -498,6 +632,8 @@ def province_dashboard_stats(request):
     إحصائيات Dashboard للمحافظة
     Returns statistics for Province Dashboard
     """
+    from schools.models import School
+    
     user = request.user
     
     # فلترة بناءً على صلاحيات المستخدم
@@ -508,9 +644,11 @@ def province_dashboard_stats(request):
                 'error': 'User has no province assigned'
             }, status=status.HTTP_403_FORBIDDEN)
         province_warehouses = ProvinceWarehouse.objects.filter(province=user.province)
+        user_province_name = user.province
     else:
         # إذا كان admin أو ministry staff، عرض كل المحافظات
         province_warehouses = ProvinceWarehouse.objects.all()
+        user_province_name = None
     
     if not province_warehouses.exists():
         return Response({
@@ -520,6 +658,12 @@ def province_dashboard_stats(request):
         }, status=status.HTTP_403_FORBIDDEN)
     
     province_ids = list(province_warehouses.values_list('id', flat=True))
+    province_names = list(province_warehouses.values_list('province', flat=True))
+    
+    # عدد المدارس في المحافظة
+    total_schools = School.objects.filter(
+        province__name__in=province_names
+    ).count() if user_province_name else School.objects.count()
     
     # إحصائيات المخزون
     province_stock = WarehouseStock.objects.filter(
@@ -537,24 +681,81 @@ def province_dashboard_stats(request):
         'delivered': incoming_shipments.filter(status='delivered').count(),
     }
     
+    # الشحنات الصادرة للمدارس (الشحنات التي تم تأكيدها من المحافظة)
+    # Note: Shipments don't have from_province field
+    # Outgoing shipments are created after province receives from ministry
+    # and then sends to schools using related_school_request
+    outgoing_shipments = Shipment.objects.filter(
+        to_school_name__isnull=False,
+        to_school_name__gt=''
+    )
+    # Filter by province if user has specific province
+    if user_province_name:
+        # Get schools in this province
+        from schools.models import School
+        schools_in_province = School.objects.filter(
+            province__name=user_province_name
+        ).values_list('name', flat=True)
+        outgoing_shipments = outgoing_shipments.filter(
+            to_school_name__in=schools_in_province
+        )
+    
+    total_outgoing = outgoing_shipments.count()
+    
     # إحصائيات مندوبي المحافظة
     province_couriers = User.objects.filter(role='province_courier')
+    if user_province_name:
+        province_couriers = province_couriers.filter(province=user_province_name)
+    
     total_couriers = province_couriers.count()
     active_couriers = province_couriers.filter(
         assigned_shipments__status__in=['assigned', 'out_for_delivery']
     ).distinct().count()
     
     # طلبات المدارس في المحافظة
-    # نستخدم province__name لأن school.province هو ForeignKey لـ Province model
-    province_names = list(province_warehouses.values_list('province', flat=True))
     school_requests = SchoolRequest.objects.filter(
         school__province__name__in=province_names
     )
-    total_requests = school_requests.count()
-    pending_requests = school_requests.filter(status='pending').count()
+    total_school_requests = school_requests.count()
+    pending_school_requests = school_requests.filter(status='pending').count()
+    approved_school_requests = school_requests.filter(status='approved').count()
+    
+    # آخر طلبات المدارس
+    recent_school_requests = school_requests.order_by('-created_at')[:5]
+    school_requests_list = []
+    for req in recent_school_requests:
+        school_requests_list.append({
+            'id': req.id,
+            'school_name': req.school.name if req.school else 'Unknown',
+            'status': req.status,
+            'items_count': req.items.count(),
+            'created_at': req.created_at.isoformat(),
+        })
     
     return Response({
+        # بيانات متوافقة مع Frontend
+        'total_schools': total_schools,
+        'pending_school_requests': pending_school_requests,
+        'approved_school_requests': approved_school_requests,
+        'incoming_shipments': total_incoming,
+        'outgoing_shipments': total_outgoing,
+        'current_inventory': total_books,
+        'total_books': total_books,
+        'low_stock_items': low_stock_count,
+        'active_couriers': active_couriers,
+        'active_drivers': active_couriers,
+        'pending_requests': pending_school_requests,
+        'approved_requests': approved_school_requests,
+        'active_shipments': total_incoming + total_outgoing,
+        'delivered_shipments': incoming_shipments.filter(status='delivered').count(),
+        'warehouse_stock': total_books,
+        'school_requests': school_requests_list,
+        'school_stats': school_requests_list,
+        'recent_activity': school_requests_list,
+        
+        # بيانات تفصيلية إضافية
         'province_info': {
+            'name': user_province_name or 'All Provinces',
             'warehouses_count': province_warehouses.count(),
             'warehouses': [
                 {'id': w.id, 'name': w.name, 'province': w.province} 
@@ -565,17 +766,21 @@ def province_dashboard_stats(request):
             'total_books': total_books,
             'low_stock_items': low_stock_count,
         },
-        'incoming_shipments': {
+        'incoming_shipments_detail': {
             'total': total_incoming,
             'by_status': incoming_by_status,
+        },
+        'outgoing_shipments_detail': {
+            'total': total_outgoing,
         },
         'couriers': {
             'total': total_couriers,
             'active': active_couriers,
         },
-        'school_requests': {
-            'total': total_requests,
-            'pending': pending_requests,
+        'school_requests_detail': {
+            'total': total_school_requests,
+            'pending': pending_school_requests,
+            'approved': approved_school_requests,
         }
     })
 
@@ -1075,7 +1280,14 @@ def confirm_delivery(request, shipment_id):
     shipment.delivery_notes = notes
     shipment.save(update_fields=['status', 'delivered_at', 'delivery_notes'])
     
-    # TODO: إرسال إشعار للمستودع/المدرسة
+    # إرسال إشعارات للأطراف المعنية
+    try:
+        from notifications.notification_service import NotificationService
+        NotificationService.notify_shipment_delivered(shipment)
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.exception(f'Failed to send delivery notification: {e}')
     
     return Response({
         'message': 'Delivery confirmed successfully',
@@ -1166,11 +1378,11 @@ def my_active_shipments(request):
 # QR Code and Report Views
 # ========================================
 
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
 def shipment_qr_code(request, shipment_id):
     """
     إرجاع QR code للشحنة كصورة PNG
+    Note: هذه دالة Django عادية وليست DRF view
+    QR Code متاح للجميع بدون authentication
     """
     from django.http import HttpResponse, Http404
     from .utils import make_qr_image_bytes, pack_qr_payload
@@ -1214,3 +1426,818 @@ def shipment_pdf_report(request, shipment_id):
     response = HttpResponse(pdf_buffer, content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="shipment_{shipment_id}_report.pdf"'
     return response
+
+
+# ========================================
+# QR Code Scanning API for Mobile App
+# ========================================
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def scan_qr_code(request):
+    """
+    مسح QR Code من التطبيق الجوال لتأكيد استلام الشحنة
+    
+    Request body:
+    {
+        "token": "qr_token_string",
+        "latitude": 15.5932,  # اختياري
+        "longitude": 32.5599,  # اختياري
+        "recipient_name": "اسم المستلم",  # اختياري
+        "notes": "ملاحظات"  # اختياري
+    }
+    
+    Response:
+    {
+        "success": true,
+        "message": "تم تأكيد استلام الشحنة بنجاح",
+        "shipment": {...},
+        "scanned_at": "2024-01-15T10:30:00Z"
+    }
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    token = request.data.get('token')
+    if not token:
+        return Response(
+            {'success': False, 'error': 'حقل token مطلوب'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        from .qr_generator import verify_shipment_qr_code
+        
+        # التحقق من صحة الـ QR Code
+        verification = verify_shipment_qr_code(token)
+        
+        if not verification['valid']:
+            return Response(
+                {
+                    'success': False,
+                    'error': verification.get('error', 'الرمز غير صالح'),
+                    'reason': verification.get('reason', 'unknown')
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # الحصول على الشحنة
+        shipment_id = verification['shipment_id']
+        try:
+            shipment = Shipment.objects.select_related(
+                'from_ministry', 'to_province', 'assigned_courier'
+            ).get(id=shipment_id)
+        except Shipment.DoesNotExist:
+            return Response(
+                {'success': False, 'error': 'الشحنة غير موجودة'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # التحقق من أن الشحنة لم يتم تأكيدها مسبقاً
+        if shipment.qr_used:
+            return Response(
+                {
+                    'success': False,
+                    'error': 'تم تأكيد استلام هذه الشحنة مسبقاً',
+                    'scanned_at': shipment.qr_scanned_at.isoformat() if shipment.qr_scanned_at else None
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # تحديث بيانات الشحنة
+        now = timezone.now()
+        shipment.qr_used = True
+        shipment.qr_scanned_at = now
+        shipment.status = 'delivered'
+        shipment.delivered_at = now
+        shipment.confirmed_at = now
+        shipment.confirmed_by = request.user
+        
+        # تحديث الموقع الجغرافي إن وجد
+        latitude = request.data.get('latitude')
+        longitude = request.data.get('longitude')
+        if latitude and longitude:
+            try:
+                shipment.current_latitude = float(latitude)
+                shipment.current_longitude = float(longitude)
+                shipment.last_location_update = now
+            except (TypeError, ValueError):
+                logger.warning(f'Invalid GPS coordinates: lat={latitude}, lng={longitude}')
+        
+        # تحديث اسم المستلم والملاحظات
+        recipient_name = request.data.get('recipient_name')
+        if recipient_name:
+            shipment.recipient_name = recipient_name
+        
+        notes = request.data.get('notes')
+        if notes:
+            shipment.delivery_notes = notes
+        
+        shipment.save()
+        
+        # إلغاء صلاحية الـ QR Code
+        from .qr_generator import invalidate_shipment_qr_code
+        invalidate_shipment_qr_code(token)
+        
+        logger.info(
+            f'[QR SCAN] Shipment #{shipment_id} confirmed by {request.user.username} at {now}'
+        )
+        
+        # إرسال إشعار لموظفي الوزارة/المحافظة
+        try:
+            if shipment.from_ministry:
+                for staff in shipment.from_ministry.staff.all():
+                    Notification.objects.create(
+                        user=staff,
+                        message=f"تم تأكيد استلام الشحنة #{shipment.id} - {shipment.tracking_code}"
+                    )
+        except Exception as e:
+            logger.exception(f'Failed to send delivery confirmation notifications: {e}')
+        
+        # إرجاع النتيجة
+        return Response({
+            'success': True,
+            'message': 'تم تأكيد استلام الشحنة بنجاح',
+            'shipment': ShipmentSerializer(shipment).data,
+            'scanned_at': now.isoformat()
+        }, status=status.HTTP_200_OK)
+    
+    except Exception as e:
+        logger.exception(f'[QR SCAN] Error scanning QR code: {e}')
+        return Response(
+            {'success': False, 'error': 'حدث خطأ أثناء معالجة الطلب'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def verify_qr_code(request):
+    """
+    التحقق من صحة QR Code بدون تأكيد الاستلام (للمعاينة فقط)
+    
+    Query params:
+    - token: QR token string
+    
+    Response:
+    {
+        "valid": true,
+        "shipment_id": 123,
+        "expires_at": "2024-01-18T10:30:00Z",
+        "shipment": {...}
+    }
+    """
+    token = request.query_params.get('token')
+    if not token:
+        return Response(
+            {'valid': False, 'error': 'حقل token مطلوب'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        from .qr_generator import verify_shipment_qr_code
+        
+        verification = verify_shipment_qr_code(token)
+        
+        if not verification['valid']:
+            return Response(verification, status=status.HTTP_200_OK)
+        
+        # الحصول على تفاصيل الشحنة
+        shipment_id = verification['shipment_id']
+        try:
+            shipment = Shipment.objects.select_related(
+                'from_ministry', 'to_province', 'assigned_courier'
+            ).get(id=shipment_id)
+            
+            verification['shipment'] = ShipmentSerializer(shipment).data
+        except Shipment.DoesNotExist:
+            verification['valid'] = False
+            verification['error'] = 'الشحنة غير موجودة'
+        
+        return Response(verification, status=status.HTTP_200_OK)
+    
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).exception(f'Error verifying QR code: {e}')
+        return Response(
+            {'valid': False, 'error': 'حدث خطأ أثناء التحقق من الرمز'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+# ============================================================================
+# Province Shipment Creation from School Requests
+# إنشاء شحنات من طلبات المدارس
+# ============================================================================
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_approved_school_requests(request):
+    """
+    جلب طلبات المدارس المعتمدة والجاهزة لإنشاء شحنات
+    
+    يستخدمه موظف المحافظة لعرض الطلبات التي تم الموافقة عليها
+    والتي لم يتم إنشاء شحنات لها بعد
+    
+    Returns:
+        قائمة بطلبات المدارس المعتمدة مع تفاصيل الكتب
+    """
+    user = request.user
+    
+    # التحقق من الصلاحيات
+    if user.role not in ['province_admin', 'province_staff', 'province_warehouse']:
+        return Response(
+            {'error': 'غير مصرح لك بالوصول إلى هذه البيانات'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    try:
+        # جلب طلبات المدارس المعتمدة
+        # التي لم يتم إنشاء شحنات لها (approved ولم تصل لحالة fulfilled)
+        approved_requests = SchoolRequest.objects.filter(
+            status='approved',
+            school__province__name=user.province  # مقارنة اسم المحافظة
+        ).select_related('school', 'school__province', 'created_by', 'reviewed_by').prefetch_related('items__book')
+        
+        # تحضير البيانات
+        requests_data = []
+        for req in approved_requests:
+            # التحقق من عدم وجود شحنة نشطة لهذا الطلب
+            existing_shipment = Shipment.objects.filter(
+                related_school_request=req,
+                status__in=['pending', 'assigned', 'out_for_delivery']
+            ).first()
+            
+            if existing_shipment:
+                # يوجد شحنة نشطة، لا نعرض هذا الطلب
+                continue
+            
+            items_data = []
+            for item in req.items.all():
+                # Convert term name to expected format
+                term_value = 'second'  # default
+                if hasattr(item.book, 'term') and item.book.term:
+                    term_name = item.book.term.name if hasattr(item.book.term, 'name') else str(item.book.term)
+                    if 'أول' in term_name or 'الأول' in term_name or term_name.lower() == 'first':
+                        term_value = 'first'
+                    elif 'ثان' in term_name or 'الثاني' in term_name or term_name.lower() == 'second':
+                        term_value = 'second'
+                
+                items_data.append({
+                    'id': item.id,
+                    'book_id': item.book.id,
+                    'book_title': item.book.title,
+                    'book_subject': item.book.subject.name,
+                    'book_grade': item.book.grade.name,
+                    'book_term': term_value,
+                    'quantity': item.quantity,
+                })
+            
+            requests_data.append({
+                'id': req.id,
+                'school': {
+                    'id': req.school.id,
+                    'name': req.school.name,
+                    'province': req.school.province.name if hasattr(req.school.province, 'name') else str(req.school.province),
+                    'directorate': req.school.directorate.name if hasattr(req.school.directorate, 'name') else str(req.school.directorate) if req.school.directorate else None,
+                },
+                'status': req.status,
+                'created_at': req.created_at.isoformat(),
+                'updated_at': req.updated_at.isoformat(),
+                'created_by': req.created_by.full_name if req.created_by else None,
+                'reviewed_by': req.reviewed_by.full_name if req.reviewed_by else None,
+                'items': items_data,
+                'total_items': len(items_data),
+                'has_active_shipment': False,
+            })
+        
+        return Response({
+            'success': True,
+            'count': len(requests_data),
+            'requests': requests_data
+        }, status=status.HTTP_200_OK)
+    
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.exception(f'Error fetching approved school requests: {e}')
+        return Response(
+            {'error': 'حدث خطأ أثناء جلب البيانات'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_shipment_from_school_request(request):
+    """
+    إنشاء شحنة من طلب مدرسة معتمد
+    
+    يستخدمه موظف المحافظة لإنشاء شحنة من طلب مدرسة تم اعتماده
+    
+    Expected data:
+    {
+        "school_request_id": 123,
+        "courier_id": 456,  // المندوب المسؤول عن التوصيل
+        "notes": "ملاحظات اختيارية"
+    }
+    
+    Returns:
+        تفاصيل الشحنة المُنشأة مع QR Code
+    """
+    user = request.user
+    
+    # التحقق من الصلاحيات
+    if user.role not in ['province_admin', 'province_staff', 'province_warehouse']:
+        return Response(
+            {'error': 'غير مصرح لك بإنشاء شحنات'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    # الحصول على البيانات
+    school_request_id = request.data.get('school_request_id')
+    courier_id = request.data.get('courier_id')
+    notes = request.data.get('notes', '')
+    
+    # التحقق من البيانات المطلوبة
+    if not school_request_id:
+        return Response(
+            {'error': 'school_request_id مطلوب'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    if not courier_id:
+        return Response(
+            {'error': 'courier_id مطلوب (يجب تحديد المندوب)'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        with transaction.atomic():
+            # جلب طلب المدرسة
+            school_request = SchoolRequest.objects.select_related('school', 'school__province').prefetch_related('items__book').get(
+                id=school_request_id
+            )
+            
+            # التحقق من أن الطلب من محافظة المستخدم
+            if hasattr(school_request.school, 'province'):
+                school_province_name = school_request.school.province.name if hasattr(school_request.school.province, 'name') else str(school_request.school.province)
+                if school_province_name != user.province:
+                    return Response(
+                        {'error': 'هذا الطلب ليس من محافظتك'},
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+            
+            # التحقق من حالة الطلب
+            if school_request.status != 'approved':
+                return Response(
+                    {'error': 'يمكن إنشاء شحنات فقط من الطلبات المعتمدة'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # التحقق من عدم وجود شحنة نشطة
+            existing_shipment = Shipment.objects.filter(
+                related_school_request=school_request,
+                status__in=['pending', 'assigned', 'out_for_delivery']
+            ).exists()
+            
+            if existing_shipment:
+                return Response(
+                    {'error': 'يوجد شحنة نشطة لهذا الطلب بالفعل'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # جلب المندوب
+            courier = User.objects.get(id=courier_id, role='province_driver')
+            
+            # جلب مستودع المحافظة
+            province_warehouse = ProvinceWarehouse.objects.filter(
+                province=user.province
+            ).first()
+            
+            if not province_warehouse:
+                return Response(
+                    {'error': 'لا يوجد مستودع لمحافظتك'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # تحضير بيانات الكتب
+            books_data = []
+            for item in school_request.items.all():
+                books_data.append({
+                    'book_id': item.book.id,
+                    'book_title': item.book.title,
+                    'book_subject': item.book.subject.name,
+                    'book_grade': item.book.grade.name,
+                    'quantity': item.quantity,
+                    'term': item.term if hasattr(item, 'term') else (item.book.term if hasattr(item.book, 'term') else 'first'),
+                })
+            
+            # إنشاء الشحنة
+            shipment = Shipment.objects.create(
+                from_ministry=None,  # من محافظة إلى مدرسة
+                to_province=province_warehouse,  # نستخدم to_province لتخزين مستودع المحافظة المصدر
+                to_school_name=school_request.school.name,
+                books=books_data,
+                courier_role='province_courier',
+                assigned_courier=courier,
+                status='assigned',  # مباشرة assigned لأنه تم إسناده لمندوب
+                related_school_request=school_request,
+                delivery_notes=notes,
+            )
+            
+            # خصم المخزون من مستودع المحافظة
+            try:
+                from .inventory_service import InventoryService
+                deduction_result = InventoryService.deduct_inventory_for_shipment(shipment)
+                
+                if not deduction_result['success']:
+                    # إذا فشل الخصم، نحذف الشحنة ونرجع خطأ
+                    shipment.delete()
+                    return Response({
+                        'error': 'فشل خصم المخزون',
+                        'details': deduction_result['message'],
+                        'errors': deduction_result['errors']
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info(
+                    f"[INVENTORY] تم خصم المخزون للشحنة #{shipment.id}: "
+                    f"{len(deduction_result['deducted_items'])} كتاب"
+                )
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.exception(f'[INVENTORY] خطأ في خصم المخزون: {e}')
+                shipment.delete()
+                return Response({
+                    'error': 'خطأ في خصم المخزون',
+                    'details': str(e)
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+            # توليد QR Code للشحنة
+            from .qr_generator import generate_shipment_qr_code
+            
+            try:
+                qr_result = generate_shipment_qr_code(shipment.id, expire_hours=72)
+                
+                # حفظ بيانات QR في الشحنة
+                shipment.qr_token = qr_result['token']
+                shipment.qr_code_image = qr_result['qr_code']  # base64
+                
+                # تحويل تاريخ انتهاء الصلاحية
+                from datetime import datetime
+                shipment.qr_expires_at = datetime.fromisoformat(qr_result['expires_at'])
+                shipment.save()
+                
+            except Exception as qr_error:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f'Failed to generate QR code: {qr_error}')
+                # الشحنة موجودة لكن بدون QR
+            
+            # إرسال إشعار للمندوب
+            try:
+                from notifications.notification_service import NotificationService
+                NotificationService.notify_shipment_assigned(shipment)
+                NotificationService.notify_shipment_created(shipment)
+            except Exception as notif_error:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f'Failed to send notification: {notif_error}')
+            
+            # إرسال تقرير للمدرسة مع QR Code
+            try:
+                send_shipment_report_to_school(
+                    shipment=shipment,
+                    school=school_request.school,
+                    school_request=school_request
+                )
+            except Exception as report_error:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f'Failed to send school report: {report_error}')
+            
+            # تسجيل في Logs
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(
+                f"[SHIPMENT CREATED] Shipment #{shipment.id} created from "
+                f"School Request #{school_request.id} by {user.username}"
+            )
+            
+            # إرجاع البيانات
+            return Response({
+                'success': True,
+                'message': 'تم إنشاء الشحنة بنجاح',
+                'shipment': {
+                    'id': shipment.id,
+                    'tracking_code': shipment.tracking_code,
+                    'status': shipment.status,
+                    'school_name': shipment.to_school_name,
+                    'courier': {
+                        'id': courier.id,
+                        'name': courier.full_name,
+                        'username': courier.username,
+                    },
+                    'books': books_data,
+                    'qr_token': shipment.qr_token if shipment.qr_token else None,
+                    'qr_code_image': shipment.qr_code_image if shipment.qr_code_image else None,
+                    'qr_expires_at': shipment.qr_expires_at.isoformat() if shipment.qr_expires_at else None,
+                    'created_at': shipment.created_at.isoformat(),
+                },
+                'school_request': {
+                    'id': school_request.id,
+                    'school_name': school_request.school.name,
+                }
+            }, status=status.HTTP_201_CREATED)
+    
+    except SchoolRequest.DoesNotExist:
+        return Response(
+            {'error': 'طلب المدرسة غير موجود أو غير تابع لمحافظتك'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    except User.DoesNotExist:
+        return Response(
+            {'error': 'المندوب غير موجود أو ليس مندوب محافظة'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.exception(f'Error creating shipment from school request: {e}')
+        return Response(
+            {'error': f'حدث خطأ أثناء إنشاء الشحنة: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+# ============================================================================
+# Send Shipment Report to School
+# إرسال تقرير الشحنة للمدرسة
+# ============================================================================
+
+def send_shipment_report_to_school(shipment, school, school_request):
+    """
+    إرسال تقرير الشحنة الواردة للمدرسة
+    
+    يتم إرسال:
+    - إشعار في النظام
+    - بيانات الشحنة
+    - QR Code
+    - تفاصيل المندوب
+    
+    Args:
+        shipment: كائن الشحنة
+        school: كائن المدرسة
+        school_request: طلب المدرسة الأصلي
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # إنشاء رسالة الإشعار
+        message_parts = [
+            f"🚚 شحنة واردة جديدة",
+            f"رقم التتبع: {shipment.tracking_code}",
+            f"",
+            f"📦 الكتب المطلوبة:",
+        ]
+        
+        # إضافة تفاصيل الكتب
+        for book in shipment.books[:3]:  # أول 3 كتب
+            message_parts.append(f"  • {book.get('book_title', 'N/A')} - الكمية: {book.get('quantity', 0)}")
+        
+        if len(shipment.books) > 3:
+            message_parts.append(f"  • وكتب أخرى... (إجمالي {len(shipment.books)} كتاب)")
+        
+        message_parts.extend([
+            f"",
+            f"👤 المندوب: {shipment.assigned_courier.full_name if shipment.assigned_courier else 'غير محدد'}",
+            f"📱 رقم التواصل: {shipment.assigned_courier.phone_number if hasattr(shipment.assigned_courier, 'phone_number') else 'غير متوفر'}",
+            f"",
+            f"📄 رمز QR Code مرفق - سيتم استخدامه عند التسليم",
+            f"⏰ صلاحية الكود: 72 ساعة",
+            f"",
+            f"يرجى الاستعداد لاستلام الشحنة"
+        ])
+        
+        notification_message = "\n".join(message_parts)
+        
+        # البحث عن موظفي المدرسة لإرسال الإشعار لهم
+        from users.models import User
+        school_staff = User.objects.filter(
+            school=school,
+            role__in=['school_admin', 'school_staff']
+        )
+        
+        if school_staff.exists():
+            # إنشاء notification لكل موظف في المدرسة
+            notifications_created = []
+            for staff_member in school_staff:
+                notification = Notification.objects.create(
+                    user=staff_member,
+                    message=notification_message,
+                    read=False
+                )
+                notifications_created.append(notification)
+                
+                logger.info(
+                    f"[SCHOOL NOTIFICATION] Created notification for "
+                    f"{staff_member.username} about shipment #{shipment.id}"
+                )
+            
+            # محاولة إرسال push notification عبر Firebase (إذا كان متوفراً)
+            try:
+                from notifications.firebase_service import FirebaseService
+                from notifications.models import DeviceToken
+                
+                # جمع device tokens
+                device_tokens = []
+                for staff_member in school_staff:
+                    tokens = DeviceToken.objects.filter(
+                        user=staff_member,
+                        is_active=True
+                    ).values_list('device_token', flat=True)
+                    device_tokens.extend(tokens)
+                
+                if device_tokens:
+                    firebase = FirebaseService()
+                    firebase.send_notification(
+                        device_tokens=list(device_tokens),
+                        title="شحنة واردة جديدة 📦",
+                        body=f"رقم التتبع: {shipment.tracking_code}",
+                        data={
+                            'type': 'incoming_shipment',
+                            'shipment_id': str(shipment.id),
+                            'tracking_code': shipment.tracking_code,
+                            'qr_token': shipment.qr_token or '',
+                            'school_id': str(school.id),
+                        }
+                    )
+                    logger.info(f"[FIREBASE] Sent push notification to {len(device_tokens)} devices")
+                    
+            except Exception as firebase_error:
+                logger.warning(f"Firebase notification failed: {firebase_error}")
+                # لا نوقف العملية إذا فشل Firebase
+            
+            logger.info(
+                f"[SCHOOL REPORT] Successfully sent report to school #{school.id} "
+                f"for shipment #{shipment.id} - {len(notifications_created)} notifications created"
+            )
+            
+            return {
+                'success': True,
+                'notifications_sent': len(notifications_created),
+                'school_staff_count': school_staff.count()
+            }
+        else:
+            logger.warning(
+                f"[SCHOOL REPORT] No staff found for school #{school.id} "
+                f"to send shipment report"
+            )
+            return {
+                'success': False,
+                'error': 'لا يوجد موظفين في المدرسة لإرسال التقرير'
+            }
+    
+    except Exception as e:
+        logger.exception(f"Error sending shipment report to school: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_school_incoming_shipments(request):
+    """
+    عرض الشحنات الواردة للمدرسة
+    
+    يستخدمه موظفو المدرسة لعرض الشحنات القادمة لهم
+    مع تفاصيل الشحنة وQR Code
+    
+    Query Parameters:
+        - status: فلترة حسب الحالة (optional)
+        - limit: عدد النتائج (default: 20)
+    
+    Returns:
+        قائمة بالشحنات الواردة للمدرسة
+    """
+    user = request.user
+    
+    # التحقق من الصلاحيات
+    if user.role not in ['school_admin', 'school_staff']:
+        return Response(
+            {'error': 'فقط موظفو المدارس يمكنهم عرض الشحنات الواردة'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    # التحقق من وجود مدرسة للمستخدم
+    if not hasattr(user, 'school') or not user.school:
+        return Response(
+            {'error': 'المستخدم غير مرتبط بمدرسة'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        school = user.school
+        
+        # جلب الشحنات الواردة للمدرسة
+        shipments = Shipment.objects.filter(
+            to_school_name=school.name
+        ).select_related('assigned_courier', 'related_school_request')
+        
+        # فلترة حسب الحالة
+        status_filter = request.query_params.get('status')
+        if status_filter:
+            shipments = shipments.filter(status=status_filter)
+        
+        # الحد من عدد النتائج
+        limit = int(request.query_params.get('limit', 20))
+        shipments = shipments[:limit]
+        
+        # تحضير البيانات
+        shipments_data = []
+        for shipment in shipments:
+            # تحديد حالة QR Code
+            qr_status = 'none'
+            if shipment.qr_token:
+                if shipment.qr_used:
+                    qr_status = 'used'
+                elif shipment.qr_expires_at and timezone.now() > shipment.qr_expires_at:
+                    qr_status = 'expired'
+                else:
+                    qr_status = 'active'
+            
+            shipment_data = {
+                'id': shipment.id,
+                'tracking_code': shipment.tracking_code,
+                'status': shipment.status,
+                'status_display': shipment.get_status_display(),
+                'books': shipment.books,
+                'total_books': len(shipment.books) if shipment.books else 0,
+                'courier': {
+                    'id': shipment.assigned_courier.id if shipment.assigned_courier else None,
+                    'name': shipment.assigned_courier.get_full_name() if shipment.assigned_courier else 'غير محدد',
+                    'username': shipment.assigned_courier.username if shipment.assigned_courier else None,
+                    'phone': getattr(shipment.assigned_courier, 'phone_number', 'غير متوفر') if shipment.assigned_courier else None,
+                } if shipment.assigned_courier else None,
+                'qr_code': {
+                    'token': shipment.qr_token,
+                    'image': shipment.qr_code_image,  # base64
+                    'expires_at': shipment.qr_expires_at.isoformat() if shipment.qr_expires_at else None,
+                    'status': qr_status,
+                    'used': shipment.qr_used,
+                    'scanned_at': shipment.qr_scanned_at.isoformat() if shipment.qr_scanned_at else None,
+                },
+                'delivery_info': {
+                    'recipient_name': shipment.recipient_name,
+                    'delivered_at': shipment.delivered_at.isoformat() if shipment.delivered_at else None,
+                    'notes': shipment.delivery_notes,
+                },
+                'timestamps': {
+                    'created_at': shipment.created_at.isoformat(),
+                    'updated_at': shipment.updated_at.isoformat(),
+                    'started_delivery_at': shipment.started_delivery_at.isoformat() if shipment.started_delivery_at else None,
+                },
+                'related_request_id': shipment.related_school_request.id if shipment.related_school_request else None,
+            }
+            
+            shipments_data.append(shipment_data)
+        
+        # إحصائيات
+        stats = {
+            'total': Shipment.objects.filter(to_school_name=school.name).count(),
+            'pending': Shipment.objects.filter(to_school_name=school.name, status='pending').count(),
+            'assigned': Shipment.objects.filter(to_school_name=school.name, status='assigned').count(),
+            'out_for_delivery': Shipment.objects.filter(to_school_name=school.name, status='out_for_delivery').count(),
+            'delivered': Shipment.objects.filter(to_school_name=school.name, status='delivered').count(),
+            'confirmed': Shipment.objects.filter(to_school_name=school.name, status='confirmed').count(),
+        }
+        
+        return Response({
+            'success': True,
+            'school': {
+                'id': school.id,
+                'name': school.name,
+                'province': school.province,
+                'directorate': school.directorate,
+            },
+            'count': len(shipments_data),
+            'shipments': shipments_data,
+            'stats': stats,
+        }, status=status.HTTP_200_OK)
+    
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.exception(f'Error fetching school incoming shipments: {e}')
+        return Response(
+            {'error': f'حدث خطأ أثناء جلب البيانات: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

@@ -106,12 +106,12 @@ class WarehouseReports:
         books_data = []
         for book_id, quantity in results:
             try:
-                book = Book.objects.get(id=book_id)
+                book = Book.objects.select_related('subject', 'grade').get(id=book_id)
                 books_data.append({
                     'book_id': book_id,
                     'title': book.title,
-                    'subject': book.subject,
-                    'grade_level': book.grade_level,
+                    'subject': book.subject.name,
+                    'grade_level': book.grade.name,
                     'total_quantity': quantity
                 })
             except Book.DoesNotExist:
@@ -249,7 +249,7 @@ class PDFReportGenerator:
             for item in low_stock:
                 stock_data.append([
                     item.book.title[:40],
-                    item.book.grade_level,
+                    item.book.grade.name,
                     item.term,
                     str(item.quantity),
                     str(item.min_threshold)
@@ -417,14 +417,13 @@ class PDFReportGenerator:
         
         for idx, book_item in enumerate(shipment.books or [], 1):
             try:
-                book = Book.objects.get(id=book_item.get('book_id'))
-                term_display = dict(Book.TERM_CHOICES).get(book_item.get('term', 'first'), 'First Term')
+                book = Book.objects.select_related('subject', 'grade', 'term').get(id=book_item.get('book_id'))
                 books_data.append([
                     str(idx),
                     book.title[:40],
-                    book.get_grade_level_display(),
-                    book.get_subject_display(),
-                    term_display,
+                    book.grade.name,
+                    book.subject.name,
+                    book.term.name,
                     str(book_item.get('quantity', 0))
                 ])
             except Book.DoesNotExist:

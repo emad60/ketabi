@@ -31,6 +31,13 @@ DEBUG = os.getenv('DJANGO_DEBUG', 'True').lower() in ('true', '1', 'yes')
 
 ALLOWED_HOSTS = os.getenv("DJANGO_ALLOWED_HOSTS", "*").split(",")
 
+# إضافة المجالات الإضافية بشكل صريح
+if '45.77.65.134' not in ALLOWED_HOSTS and '*' not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.extend(['45.77.65.134', '45.77.65.134.vultrusercontent.com', 'localhost', '127.0.0.1'])
+elif '*' not in ALLOWED_HOSTS:
+    # إذا لم يكن wildcard موجود، أضف المجالات
+    ALLOWED_HOSTS.extend(['45.77.65.134', '45.77.65.134.vultrusercontent.com'])
+
 
 # ==============================
 # 🧩 Installed Apps
@@ -136,11 +143,17 @@ MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',  # ✅ يجب أن يكون في الأول بعد SecurityMiddleware
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
+    'core.middleware.DisableCSRFForAPIMiddleware',  # ✅ Disable CSRF for API endpoints
+    # CSRF middleware - but we'll exempt API endpoints
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+# Exempt API endpoints from CSRF protection (using JWT for API)
+CSRF_COOKIE_HTTPONLY = False
+CSRF_USE_SESSIONS = False
 
 
 # ==============================
@@ -177,6 +190,7 @@ CACHES = {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
             "SOCKET_CONNECT_TIMEOUT": 5,
             "SOCKET_TIMEOUT": 5,
+            "IGNORE_EXCEPTIONS": True,  # 🔥 تجاهل أخطاء Redis والعودة للقاعدة
             "CONNECTION_POOL_KWARGS": {
                 "max_connections": 50,
                 "retry_on_timeout": True
@@ -187,8 +201,8 @@ CACHES = {
     }
 }
 
-# استخدام Redis للـ sessions (optional - أفضل للأداء)
-SESSION_ENGINE = "django.contrib.sessions.backends.cache"
+# استخدام Database للـ sessions (أكثر استقراراً من Redis)
+SESSION_ENGINE = "django.contrib.sessions.backends.db"
 SESSION_CACHE_ALIAS = "default"
 
 
@@ -248,15 +262,17 @@ CSRF_TRUSTED_ORIGINS = os.getenv(
     'http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000'
 ).split(',')
 
-# Prevent Django from redirecting POST requests to slash-terminated URLs
-# Some clients (mobile/web apps) post to endpoints without trailing slash.
-APPEND_SLASH = False
+# Allow Django to append trailing slash automatically
+APPEND_SLASH = True
 
 # Add common local web debug ports to trusted origins for CSRF (useful for Flutter web)
 additional_csrf_origins = [
     'http://localhost:53995',
     'http://127.0.0.1:53995',
     'http://192.168.105.69:53995',
+    'http://45.77.65.134',
+    'http://45.77.65.134.vultrusercontent.com',
+    'https://45.77.65.134.vultrusercontent.com',
 ]
 for origin in additional_csrf_origins:
     if origin not in CSRF_TRUSTED_ORIGINS:
@@ -315,6 +331,9 @@ LOGGING = {
         },
     },
 }
+STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+
 
 # إنشاء مجلد logs
 os.makedirs(os.path.join(BASE_DIR, 'logs'), exist_ok=True)

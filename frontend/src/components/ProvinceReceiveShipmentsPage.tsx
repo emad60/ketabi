@@ -40,12 +40,20 @@ interface ShipmentType {
   id: number;
   tracking_code: string;
   from_ministry?: { id: number; name: string; };
+  from_ministry_name?: string;
   to_province?: { id: number; name: string; province: string; };
+  to_province_name?: string;
   books: any[];
   assigned_courier?: { id: number; username: string; full_name: string; };
+  assigned_courier_details?: { id: number; username: string; full_name: string; };
+  assigned_courier_name?: string;
   status: string;
   created_at: string;
   delivered_at: string | null;
+  related_request?: { id: number; request_number?: string; };
+  related_school_request?: { id: number; request_number?: string; };
+  related_request_number?: string;
+  related_school_request_number?: string;
 }
 
 interface ReceiveDialogData {
@@ -59,6 +67,7 @@ export function ProvinceReceiveShipmentsPage() {
   const [shipments, setShipments] = useState<ShipmentType[]>([]);
   const [loading, setLoading] = useState(true);
   const [showReceiveDialog, setShowReceiveDialog] = useState(false);
+  const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [selectedShipment, setSelectedShipment] = useState<ShipmentType | null>(null);
   const [receiving, setReceiving] = useState(false);
   const [receiveData, setReceiveData] = useState<ReceiveDialogData>({
@@ -75,10 +84,9 @@ export function ProvinceReceiveShipmentsPage() {
     try {
       setLoading(true);
       
-      // Get shipments for this province
-      // If `user.province` is a numeric ID, send it to backend.
-      // Otherwise omit the param and filter by name client-side (some test users may have only province_name).
-      const params: any = { status: 'out_for_delivery' };
+      // Get shipments coming to this province from ministry
+      // We want shipments where from_ministry is not null and to_province matches
+      const params: any = {};
       if (typeof user?.province === 'number') {
         params.to_province = user.province;
       }
@@ -86,12 +94,19 @@ export function ProvinceReceiveShipmentsPage() {
       const response = await api.get('/warehouses/shipments/', { params });
       let data = response.data.results || response.data || [];
 
-      // If we didn't filter by numeric province id (because user.province was a name),
-      // filter locally by `province_name` or province.name field.
+      // Filter to show only ministry-to-province shipments
+      // and filter by province name if needed
       if (typeof user?.province !== 'number' && user?.province_name) {
         const pname = user.province_name;
         data = (Array.isArray(data) ? data : []).filter((s: any) => {
-          return s.to_province?.province === pname || s.to_province?.name === pname || s.to_province === pname;
+          const hasMinistrySource = s.from_ministry || s.from_warehouse?.ministry;
+          const matchesProvince = s.to_province?.province === pname || s.to_province?.name === pname || s.to_province === pname;
+          return hasMinistrySource && matchesProvince;
+        });
+      } else {
+        // Filter to show only ministry shipments
+        data = (Array.isArray(data) ? data : []).filter((s: any) => {
+          return s.from_ministry || s.from_warehouse?.ministry;
         });
       }
 
@@ -124,7 +139,7 @@ export function ProvinceReceiveShipmentsPage() {
       setReceiving(true);
       
       await api.post(
-        `/warehouses/mobile/school/deliveries/${selectedShipment.id}/receive/`,
+        `/warehouses/mobile/province/shipments/${selectedShipment.id}/receive/`,
         {
           receiver_name: receiveData.receiver_name,
           notes: receiveData.notes,
@@ -267,10 +282,11 @@ export function ProvinceReceiveShipmentsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="text-right">رقم الشحنة</TableHead>
                   <TableHead className="text-right">رقم التتبع</TableHead>
+                  <TableHead className="text-right">رقم الطلب</TableHead>
                   <TableHead className="text-right">من</TableHead>
                   <TableHead className="text-right">المندوب</TableHead>
-                  <TableHead className="text-right">التاريخ</TableHead>
                   <TableHead className="text-right">الحالة</TableHead>
                   <TableHead className="text-right">الإجراءات</TableHead>
                 </TableRow>
@@ -278,25 +294,29 @@ export function ProvinceReceiveShipmentsPage() {
               <TableBody>
                 {shipments.map((shipment) => (
                   <TableRow key={shipment.id}>
-                    <TableCell className="font-mono font-semibold">
+                    <TableCell className="font-bold text-blue-600">
+                      #{shipment.id}
+                    </TableCell>
+                    <TableCell className="font-mono text-sm">
                       {shipment.tracking_code}
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-2">
+                      {shipment.related_request_number || 
+                       shipment.related_school_request_number ||
+                       (shipment.related_request?.id ? `#${shipment.related_request.id}` : '') ||
+                       (shipment.related_school_request?.id ? `#${shipment.related_school_request.id}` : '') ||
+                       <span className="text-gray-400">-</span>}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2 text-sm">
                         <MapPin className="w-4 h-4 text-gray-400" />
-                        {shipment.from_ministry?.name || 'غير محدد'}
+                        {shipment.from_ministry_name || shipment.from_ministry?.name || 'غير محدد'}
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 text-sm">
                         <User className="w-4 h-4 text-gray-400" />
-                        {shipment.assigned_courier?.full_name || 'غير مسند'}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <Calendar className="w-4 h-4" />
-                        {formatDate(shipment.created_at)}
+                        {shipment.assigned_courier_name || shipment.assigned_courier_details?.full_name || shipment.assigned_courier?.full_name || 'غير مسند'}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -304,6 +324,17 @@ export function ProvinceReceiveShipmentsPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setSelectedShipment(shipment);
+                            setShowDetailsDialog(true);
+                          }}
+                        >
+                          <Eye className="w-4 h-4 ml-1" />
+                          التفاصيل
+                        </Button>
                         {shipment.status === 'delivered' && (
                           <Button
                             size="sm"
@@ -312,25 +343,9 @@ export function ProvinceReceiveShipmentsPage() {
                             onClick={() => handleReceiveShipment(shipment)}
                           >
                             <Check className="w-4 h-4 ml-1" />
-                            تأكيد الاستلام
+                            تأكيد
                           </Button>
                         )}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => window.open(`http://localhost:8000/api/warehouses/shipments/${shipment.id}/qr/`, '_blank')}
-                        >
-                          <QrCode className="w-4 h-4 ml-1" />
-                          QR
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => window.open(`http://localhost:8000/api/warehouses/shipments/${shipment.id}/report/`, '_blank')}
-                        >
-                          <Download className="w-4 h-4 ml-1" />
-                          PDF
-                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -451,6 +466,132 @@ export function ProvinceReceiveShipmentsPage() {
               className="bg-green-600 hover:bg-green-700"
             >
               {receiving ? 'جاري التأكيد...' : 'تأكيد الاستلام'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Shipment Details Dialog */}
+      <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>تفاصيل الشحنة #{selectedShipment?.id}</DialogTitle>
+          </DialogHeader>
+          
+          {selectedShipment && (
+            <div className="space-y-4">
+              {/* Basic Info */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">المعلومات الأساسية</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm text-gray-600">رقم الشحنة</p>
+                      <p className="font-bold text-blue-600">#{selectedShipment.id}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">رقم التتبع</p>
+                      <p className="font-mono font-semibold">{selectedShipment.tracking_code}</p>
+                    </div>
+                    {(selectedShipment.related_request_number || selectedShipment.related_school_request_number || selectedShipment.related_request || selectedShipment.related_school_request) && (
+                      <div>
+                        <p className="text-sm text-gray-600">رقم الطلب</p>
+                        <p className="font-semibold">
+                          {selectedShipment.related_request_number || 
+                           selectedShipment.related_school_request_number ||
+                           (selectedShipment.related_request?.id ? `#${selectedShipment.related_request.id}` : '') ||
+                           (selectedShipment.related_school_request?.id ? `#${selectedShipment.related_school_request.id}` : '')}
+                        </p>
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-sm text-gray-600">الحالة</p>
+                      {getStatusBadge(selectedShipment.status)}
+                    </div>
+                  </div>
+
+                  <div className="border-t pt-3">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-sm text-gray-600">من</p>
+                        <p className="font-semibold">{selectedShipment.from_ministry_name || selectedShipment.from_ministry?.name || 'غير محدد'}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600">إلى</p>
+                        <p className="font-semibold">{selectedShipment.to_province_name || selectedShipment.to_province?.name || 'غير محدد'}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {(selectedShipment.assigned_courier_details || selectedShipment.assigned_courier || selectedShipment.assigned_courier_name) && (
+                    <div className="border-t pt-3">
+                      <p className="text-sm text-gray-600">المندوب</p>
+                      <div className="flex items-center gap-2">
+                        <User className="w-4 h-4 text-gray-400" />
+                        <span className="font-semibold">{selectedShipment.assigned_courier_name || selectedShipment.assigned_courier_details?.full_name || selectedShipment.assigned_courier?.full_name}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="border-t pt-3">
+                    <p className="text-sm text-gray-600">تاريخ الإنشاء</p>
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-gray-400" />
+                      <span>{formatDate(selectedShipment.created_at)}</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Books List */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">الكتب ({selectedShipment.books?.length || 0})</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {selectedShipment.books?.map((book: any, idx: number) => (
+                      <div
+                        key={idx}
+                        className="flex justify-between items-center p-3 bg-gray-50 rounded border"
+                      >
+                        <span className="flex-1">{book.book_title}</span>
+                        <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded font-semibold">
+                          {book.quantity}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Actions */}
+              <div className="flex gap-2 pt-4 border-t">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => window.open(`http://localhost:8000/api/warehouses/shipments/${selectedShipment.id}/qr/`, '_blank')}
+                >
+                  <QrCode className="w-4 h-4 ml-2" />
+                  عرض QR Code
+                </Button>
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => window.open(`http://localhost:8000/api/warehouses/shipments/${selectedShipment.id}/report/`, '_blank')}
+                >
+                  <Download className="w-4 h-4 ml-2" />
+                  تحميل التقرير PDF
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDetailsDialog(false)}>
+              إغلاق
             </Button>
           </DialogFooter>
         </DialogContent>

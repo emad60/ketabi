@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>اختبار ظهور الطلب #42</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+      direction: rtl;
+    }
+    
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 20px;
+      padding: 30px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    }
+    
+    h1 {
+      color: #2d3748;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .subtitle {
+      color: #718096;
+      margin-bottom: 30px;
+    }
+    
+    .step {
+      background: #f7fafc;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+      border-right: 5px solid #667eea;
+    }
+    
+    .step h2 {
+      color: #2d3748;
+      font-size: 1.2rem;
+      margin-bottom: 15px;
+    }
+    
+    .input-group {
+      margin-bottom: 15px;
+    }
+    
+    label {
+      display: block;
+      color: #4a5568;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    
+    input {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 1rem;
+    }
+    
+    input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+    
+    button {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 12px 30px;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.3s;
+    }
+    
+    button:hover {
+      transform: translateY(-2px);
+    }
+    
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    .result {
+      background: white;
+      border: 2px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 20px;
+      margin-top: 20px;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    
+    .success {
+      background: #c6f6d5;
+      border-color: #48bb78;
+      color: #22543d;
+    }
+    
+    .error {
+      background: #fed7d7;
+      border-color: #fc8181;
+      color: #c53030;
+    }
+    
+    pre {
+      background: #2d3748;
+      color: #e2e8f0;
+      padding: 15px;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-size: 0.9rem;
+      margin-top: 10px;
+    }
+    
+    .request-card {
+      background: white;
+      border: 2px solid #667eea;
+      border-radius: 12px;
+      padding: 20px;
+      margin-top: 15px;
+    }
+    
+    .request-card h3 {
+      color: #2d3748;
+      margin-bottom: 10px;
+    }
+    
+    .badge {
+      display: inline-block;
+      padding: 5px 12px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      background: #c6f6d5;
+      color: #22543d;
+      margin-bottom: 10px;
+    }
+    
+    .book-item {
+      background: #f7fafc;
+      padding: 10px;
+      border-radius: 8px;
+      margin-top: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .quantity {
+      background: #667eea;
+      color: white;
+      padding: 5px 15px;
+      border-radius: 8px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🧪 اختبار ظهور الطلب #42</h1>
+    <p class="subtitle">اختبار API للتأكد من ظهور الطلب المعتمد في واجهة إنشاء الشحنات</p>
+    
+    <!-- Step 1: Login -->
+    <div class="step">
+      <h2>1️⃣ تسجيل الدخول</h2>
+      <div class="input-group">
+        <label>اسم المستخدم:</label>
+        <input type="text" id="username" placeholder="province_user">
+      </div>
+      <div class="input-group">
+        <label>كلمة المرور:</label>
+        <input type="password" id="password" placeholder="••••••••">
+      </div>
+      <button onclick="login()">تسجيل الدخول</button>
+      <div id="login-result" class="result" style="display: none;"></div>
+    </div>
+    
+    <!-- Step 2: Get Requests -->
+    <div class="step">
+      <h2>2️⃣ جلب الطلبات المعتمدة</h2>
+      <button onclick="getApprovedRequests()" id="get-requests-btn" disabled>
+        جلب الطلبات
+      </button>
+      <div id="requests-result" class="result" style="display: none;"></div>
+    </div>
+    
+    <!-- Step 3: Results -->
+    <div class="step">
+      <h2>3️⃣ النتائج</h2>
+      <div id="final-results"></div>
+    </div>
+  </div>
+  
+  <script>
+    const API_BASE = 'http://45.77.65.134';
+    let authToken = null;
+    
+    async function login() {
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+      const resultDiv = document.getElementById('login-result');
+      
+      if (!username || !password) {
+        resultDiv.className = 'result error';
+        resultDiv.style.display = 'block';
+        resultDiv.innerHTML = '❌ يرجى إدخال اسم المستخدم وكلمة المرور';
+        return;
+      }
+      
+      try {
+        const response = await fetch(`${API_BASE}/auth/login/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ username, password })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.token) {
+          authToken = data.token;
+          localStorage.setItem('authToken', authToken);
+          
+          resultDiv.className = 'result success';
+          resultDiv.style.display = 'block';
+          resultDiv.innerHTML = `
+            <strong>✅ تم تسجيل الدخول بنجاح!</strong>
+            <pre>${JSON.stringify(data.user, null, 2)}</pre>
+          `;
+          
+          document.getElementById('get-requests-btn').disabled = false;
+        } else {
+          throw new Error(data.error || 'فشل تسجيل الدخول');
+        }
+      } catch (error) {
+        resultDiv.className = 'result error';
+        resultDiv.style.display = 'block';
+        resultDiv.innerHTML = `❌ خطأ: ${error.message}`;
+      }
+    }
+    
+    async function getApprovedRequests() {
+      const resultDiv = document.getElementById('requests-result');
+      const finalDiv = document.getElementById('final-results');
+      
+      if (!authToken) {
+        resultDiv.className = 'result error';
+        resultDiv.style.display = 'block';
+        resultDiv.innerHTML = '❌ يجب تسجيل الدخول أولاً';
+        return;
+      }
+      
+      try {
+        const response = await fetch(
+          `${API_BASE}/warehouses/province/school-requests/approved/`,
+          {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${authToken}`
+            }
+          }
+        );
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+          resultDiv.className = 'result success';
+          resultDiv.style.display = 'block';
+          resultDiv.innerHTML = `
+            <strong>✅ تم جلب الطلبات بنجاح!</strong>
+            <p>عدد الطلبات: ${data.count}</p>
+            <pre>${JSON.stringify(data, null, 2)}</pre>
+          `;
+          
+          // عرض النتائج بشكل جميل
+          displayRequests(data.requests);
+        } else {
+          throw new Error(data.error || 'فشل جلب الطلبات');
+        }
+      } catch (error) {
+        resultDiv.className = 'result error';
+        resultDiv.style.display = 'block';
+        resultDiv.innerHTML = `❌ خطأ: ${error.message}`;
+      }
+    }
+    
+    function displayRequests(requests) {
+      const finalDiv = document.getElementById('final-results');
+      
+      if (requests.length === 0) {
+        finalDiv.innerHTML = `
+          <div class="result error">
+            <strong>⚠️ لا توجد طلبات معتمدة</strong>
+            <p>الأسباب المحتملة:</p>
+            <ul>
+              <li>المستخدم ليس من نفس محافظة المدرسة</li>
+              <li>الطلب #42 ليس بحالة "approved"</li>
+              <li>يوجد شحنة نشطة للطلب</li>
+            </ul>
+          </div>
+        `;
+        return;
+      }
+      
+      // البحث عن الطلب #42
+      const request42 = requests.find(r => r.id === 42);
+      
+      if (request42) {
+        finalDiv.innerHTML = `
+          <div class="result success">
+            <strong>🎉 تم العثور على الطلب #42!</strong>
+            <div class="request-card">
+              <h3>🏫 ${request42.school.name}</h3>
+              <span class="badge">${request42.status}</span>
+              <p><strong>المحافظة:</strong> ${request42.school.province}</p>
+              <p><strong>المديرية:</strong> ${request42.school.directorate}</p>
+              <p><strong>عدد الكتب:</strong> ${request42.total_items}</p>
+              
+              <h4 style="margin-top: 15px; margin-bottom: 10px;">📚 الكتب المطلوبة:</h4>
+              ${request42.items.map(item => `
+                <div class="book-item">
+                  <span>${item.book_title}</span>
+                  <span class="quantity">${item.quantity} نسخة</span>
+                </div>
+              `).join('')}
+            </div>
+            
+            <p style="margin-top: 20px;">
+              <strong>✅ الطلب سيظهر في واجهة إنشاء الشحنات!</strong>
+            </p>
+            <a href="http://45.77.65.134/province/shipments/create" 
+               target="_blank" 
+               style="display: inline-block; margin-top: 15px; padding: 12px 30px; background: #667eea; color: white; text-decoration: none; border-radius: 10px; font-weight: 600;">
+              افتح واجهة إنشاء الشحنات
+            </a>
+          </div>
+        `;
+      } else {
+        finalDiv.innerHTML = `
+          <div class="result error">
+            <strong>⚠️ الطلب #42 غير موجود في القائمة</strong>
+            <p>عدد الطلبات المعتمدة: ${requests.length}</p>
+            <p>الطلبات الموجودة:</p>
+            ${requests.map(r => `
+              <div class="request-card">
+                <h3>#${r.id} - ${r.school.name}</h3>
+                <p>${r.total_items} كتب</p>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      }
+    }
+    
+    // تحميل Token من localStorage عند فتح الصفحة
+    window.onload = function() {
+      const savedToken = localStorage.getItem('authToken');
+      if (savedToken) {
+        authToken = savedToken;
+        document.getElementById('get-requests-btn').disabled = false;
+        document.getElementById('login-result').className = 'result success';
+        document.getElementById('login-result').style.display = 'block';
+        document.getElementById('login-result').innerHTML = '✅ تم تحميل Token من الجلسة السابقة';
+      }
+    };
+  </script>
+</body>
+</html>

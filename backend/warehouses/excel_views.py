@@ -15,7 +15,7 @@ from django.utils import timezone
 from .models_reports import Report
 from .serializers import ExcelReportSerializer
 from .excel_reports import ExcelReportGenerator
-from .models import MinistryWarehouse, ProvinceWarehouse, Shipment, WarehouseStock
+from .models import MinistryWarehouse, ProvinceWarehouse, WarehouseStock, MinistryToProvinceShipment, ProvinceToSchoolShipment
 from schools.models import Province, School
 from users.models import User
 from .permissions import IsMinistryStaff, IsProvinceStaff

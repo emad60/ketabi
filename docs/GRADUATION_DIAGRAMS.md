@@ -21,7 +21,8 @@ erDiagram
     User ||--o{ DeviceToken : "owns"
     User ||--o{ BookRequest : "creates"
     User ||--o{ SchoolRequest : "creates"
-    User ||--o{ Shipment : "delivers"
+    User ||--o{ MinistryToProvinceShipment : "delivers"
+    User ||--o{ ProvinceToSchoolShipment : "delivers"
     User }o--|| School : "works_at"
     
     Province ||--o{ Directorate : "contains"
@@ -39,20 +40,25 @@ erDiagram
     Book ||--o{ WarehouseStock : "stored_in"
     
     SchoolRequest ||--|{ SchoolRequestItem : "contains"
-    SchoolRequest ||--o{ Shipment : "generates"
     SchoolRequest }o--|| User : "reviewed_by"
     SchoolRequest }o--|| User : "created_by"
     
     BookRequest ||--|{ BookRequestItem : "contains"
-    BookRequest ||--o{ Shipment : "generates"
+    BookRequest ||--o{ MinistryToProvinceShipment : "generates"
     BookRequest }o--|| User : "reviewed_by"
     BookRequest }o--|| User : "created_by"
     
-    Shipment }o--o| MinistryWarehouse : "from"
-    Shipment }o--o| ProvinceWarehouse : "to"
-    Shipment }o--|| User : "assigned_to"
-    Shipment }o--o| BookRequest : "fulfills"
-    Shipment }o--o| SchoolRequest : "fulfills"
+    SchoolRequest ||--o{ ProvinceToSchoolShipment : "generates"
+    
+    MinistryToProvinceShipment }o--|| MinistryWarehouse : "from"
+    MinistryToProvinceShipment }o--|| ProvinceWarehouse : "to"
+    MinistryToProvinceShipment }o--|| User : "assigned_courier"
+    MinistryToProvinceShipment }o--o| BookRequest : "fulfills"
+    
+    ProvinceToSchoolShipment }o--|| ProvinceWarehouse : "from"
+    ProvinceToSchoolShipment }o--|| School : "to"
+    ProvinceToSchoolShipment }o--|| User : "assigned_courier"
+    ProvinceToSchoolShipment }o--o| SchoolRequest : "fulfills"
     
     MinistryWarehouse ||--o{ WarehouseStock : "stores"
     ProvinceWarehouse ||--o{ WarehouseStock : "stores"
@@ -148,14 +154,12 @@ erDiagram
         string term
     }
     
-    Shipment {
+    MinistryToProvinceShipment {
         int id PK
         string tracking_code UK
         int from_ministry_id FK
         int to_province_id FK
-        string to_school_name
         json books
-        string courier_role
         int assigned_courier_id FK
         string status
         string qr_token UK
@@ -165,7 +169,25 @@ erDiagram
         datetime delivered_at
         text delivery_notes
         int related_request_id FK
+        datetime created_at
+    }
+    
+    ProvinceToSchoolShipment {
+        int id PK
+        string tracking_code UK
+        int from_province_id FK
+        int to_school_id FK
+        json books
+        int assigned_courier_id FK
+        string status
+        string qr_token UK
+        text qr_code_image
+        datetime qr_expires_at
+        boolean qr_used
+        datetime delivered_at
+        text delivery_notes
         int related_school_request_id FK
+        datetime created_at
     }
     
     MinistryWarehouse {
@@ -326,14 +348,12 @@ classDiagram
         +__str__()
     }
     
-    class Shipment {
+    class MinistryToProvinceShipment {
         +int id
         +string tracking_code
         +MinistryWarehouse from_ministry
         +ProvinceWarehouse to_province
-        +string to_school_name
         +json books
-        +string courier_role
         +User assigned_courier
         +string status
         +string qr_token
@@ -343,7 +363,28 @@ classDiagram
         +datetime delivered_at
         +text delivery_notes
         +BookRequest related_request
-        +SchoolRequest related_school_request
+        +generate_tracking_code()
+        +generate_qr_code()
+        +start_delivery()
+        +confirm_delivery()
+        +__str__()
+    }
+    
+    class ProvinceToSchoolShipment {
+        +int id
+        +string tracking_code
+        +ProvinceWarehouse from_province
+        +School to_school
+        +json books
+        +User assigned_courier
+        +string status
+        +string qr_token
+        +text qr_code_image
+        +datetime qr_expires_at
+        +boolean qr_used
+        +datetime delivered_at
+        +text delivery_notes
+        +SchoolRequest related_request
         +generate_tracking_code()
         +generate_qr_code()
         +start_delivery()
@@ -437,7 +478,8 @@ classDiagram
     User "1" --> "*" DeviceToken : owns
     User "1" --> "*" SchoolRequest : creates
     User "1" --> "*" BookRequest : creates
-    User "1" --> "*" Shipment : delivers
+    User "1" --> "*" MinistryToProvinceShipment : delivers
+    User "1" --> "*" ProvinceToSchoolShipment : delivers
     User "*" --> "0..1" School : works_at
     
     Province "1" --> "*" Directorate : contains

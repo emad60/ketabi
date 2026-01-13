@@ -3,11 +3,11 @@
 تتعامل مع خصم الكميات من المخازن عند إنشاء الشحنات
 """
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Union
 from django.db import transaction
 from django.utils import timezone
 
-from .models import WarehouseStock, StockMovement, Shipment
+from .models import WarehouseStock, StockMovement, MinistryToProvinceShipment, ProvinceToSchoolShipment
 
 logger = logging.getLogger(__name__)
 
@@ -16,12 +16,12 @@ class InventoryService:
     """خدمة إدارة المخزون وخصم الكميات عند إنشاء الشحنات"""
     
     @staticmethod
-    def deduct_inventory_for_shipment(shipment: Shipment) -> Dict[str, Any]:
+    def deduct_inventory_for_shipment(shipment: Union[MinistryToProvinceShipment, ProvinceToSchoolShipment]) -> Dict[str, Any]:
         """
         خصم الكميات من المخزون بناءً على بيانات الشحنة
         
         Args:
-            shipment: كائن الشحنة المراد خصم كمياتها
+            shipment: كائن الشحنة المراد خصم كمياتها (MinistryToProvinceShipment أو ProvinceToSchoolShipment)
             
         Returns:
             dict: نتيجة العملية مع التفاصيل
@@ -40,22 +40,24 @@ class InventoryService:
                 'errors': ['books field is empty']
             }
         
-        # تحديد المستودع المصدر بناءً على نوع المندوب
+        # تحديد المستودع المصدر بناءً على نوع الشحنة
         source_warehouse = None
         warehouse_type = None
         
-        if shipment.courier_role == 'ministry_courier':
+        if isinstance(shipment, MinistryToProvinceShipment):
+            # شحنة من الوزارة إلى المحافظة - المصدر هو مستودع الوزارة
             source_warehouse = shipment.from_ministry
             warehouse_type = 'ministry'
-        elif shipment.courier_role == 'province_courier':
-            source_warehouse = shipment.to_province
+        elif isinstance(shipment, ProvinceToSchoolShipment):
+            # شحنة من المحافظة إلى المدرسة - المصدر هو مستودع المحافظة
+            source_warehouse = shipment.from_province
             warehouse_type = 'province'
         else:
             return {
                 'success': False,
-                'message': f'نوع المندوب غير معروف: {shipment.courier_role}',
+                'message': f'نوع الشحنة غير معروف: {type(shipment)}',
                 'deducted_items': [],
-                'errors': ['unknown courier_role']
+                'errors': ['unknown shipment type']
             }
         
         if not source_warehouse:
@@ -261,3 +263,202 @@ class InventoryService:
             'items_status': items_status,
             'insufficient_items': insufficient_items
         }
+    
+    @staticmethod
+    def add_inventory_from_ministry_shipment(shipment) -> Dict[str, Any]:
+        """
+        إضافة الكميات إلى مخزون المحافظة عند استلام شحنة من الوزارة
+        
+        Args:
+            shipment: MinistryToProvinceShipment كائن الشحنة
+            
+        Returns:
+            dict: نتيجة العملية
+        """
+        if not shipment or not shipment.books:
+            return {
+                'success': False,
+                'message': 'لا توجد كتب في الشحنة',
+                'added_items': [],
+                'errors': ['books field is empty']
+            }
+        
+        if not shipment.to_province:
+            return {
+                'success': False,
+                'message': 'مستودع المحافظة المستلم غير محدد',
+                'added_items': [],
+                'errors': ['destination province warehouse not found']
+            }
+        
+        added_items = []
+        errors = []
+        
+        try:
+            with transaction.atomic():
+                for book_item in shipment.books:
+                    book_id = int(book_item.get('book_id'))
+                    quantity = int(book_item.get('quantity'))
+                    term = book_item.get('term')
+                    
+                    try:
+                        # البحث عن المخزون أو إنشاؤه
+                        stock, created = WarehouseStock.objects.select_for_update().get_or_create(
+                            province_warehouse=shipment.to_province,
+                            book_id=book_id,
+                            term=term,
+                            defaults={'quantity': 0}
+                        )
+                        
+                        # إضافة الكمية
+                        stock.quantity += quantity
+                        stock.save()
+                        
+                        # تسجيل الحركة
+                        StockMovement.objects.create(
+                            warehouse_stock=stock,
+                            movement_type='in',
+                            quantity=quantity,
+                            reason=f'استلام من شحنة الوزارة #{shipment.tracking_code}',
+                            reference_type='ministry_shipment',
+                            reference_id=shipment.id,
+                            performed_by=shipment.confirmed_by if hasattr(shipment, 'confirmed_by') else None
+                        )
+                        
+                        added_items.append({
+                            'book_id': book_id,
+                            'book_name': str(stock.book),
+                            'term': term,
+                            'quantity': quantity,
+                            'new_stock': stock.quantity
+                        })
+                        
+                        logger.info(f'[INVENTORY] Added {quantity} of book #{book_id} ({term}) to {shipment.to_province} from ministry shipment #{shipment.id}')
+                        
+                    except Exception as e:
+                        error_msg = f'خطأ في إضافة الكتاب {book_id}: {str(e)}'
+                        logger.exception(f'[INVENTORY] {error_msg}')
+                        errors.append(error_msg)
+                
+                if errors:
+                    raise Exception('فشل في إضافة بعض الكتب')
+                
+                return {
+                    'success': True,
+                    'message': f'تم إضافة {len(added_items)} كتاب إلى مخزون المحافظة',
+                    'added_items': added_items,
+                    'errors': []
+                }
+                
+        except Exception as e:
+            logger.exception(f'[INVENTORY] Failed to add inventory from ministry shipment #{shipment.id}: {str(e)}')
+            return {
+                'success': False,
+                'message': f'فشل في إضافة الكميات: {str(e)}',
+                'added_items': added_items,
+                'errors': errors
+            }
+    
+    @staticmethod
+    def deduct_inventory_for_school_shipment(shipment) -> Dict[str, Any]:
+        """
+        خصم الكميات من مخزون المحافظة عند إنشاء شحنة للمدرسة
+        
+        Args:
+            shipment: ProvinceToSchoolShipment كائن الشحنة
+            
+        Returns:
+            dict: نتيجة العملية
+        """
+        if not shipment or not shipment.books:
+            return {
+                'success': False,
+                'message': 'لا توجد كتب في الشحنة',
+                'deducted_items': [],
+                'errors': ['books field is empty']
+            }
+        
+        if not shipment.from_province:
+            return {
+                'success': False,
+                'message': 'مستودع المحافظة المصدر غير محدد',
+                'deducted_items': [],
+                'errors': ['source province warehouse not found']
+            }
+        
+        deducted_items = []
+        errors = []
+        
+        try:
+            with transaction.atomic():
+                for book_item in shipment.books:
+                    book_id = int(book_item.get('book_id'))
+                    quantity = int(book_item.get('quantity'))
+                    term = book_item.get('term')
+                    
+                    try:
+                        stock = WarehouseStock.objects.select_for_update().get(
+                            province_warehouse=shipment.from_province,
+                            book_id=book_id,
+                            term=term
+                        )
+                        
+                        # التحقق من توفر الكمية
+                        if stock.quantity < quantity:
+                            error_msg = f'الكمية غير كافية للكتاب {stock.book}: متوفر {stock.quantity} مطلوب {quantity}'
+                            logger.warning(f'[INVENTORY] {error_msg} - School Shipment #{shipment.id}')
+                            errors.append(error_msg)
+                            continue
+                        
+                        # خصم الكمية
+                        stock.quantity -= quantity
+                        stock.save()
+                        
+                        # تسجيل الحركة
+                        StockMovement.objects.create(
+                            warehouse_stock=stock,
+                            movement_type='out',
+                            quantity=quantity,
+                            reason=f'شحنة للمدرسة #{shipment.tracking_code}',
+                            reference_type='school_shipment',
+                            reference_id=shipment.id,
+                            performed_by=shipment.created_by if hasattr(shipment, 'created_by') else None
+                        )
+                        
+                        deducted_items.append({
+                            'book_id': book_id,
+                            'book_name': str(stock.book),
+                            'term': term,
+                            'quantity': quantity,
+                            'remaining_stock': stock.quantity
+                        })
+                        
+                        logger.info(f'[INVENTORY] Deducted {quantity} of book #{book_id} ({term}) from {shipment.from_province} for school shipment #{shipment.id}')
+                        
+                    except WarehouseStock.DoesNotExist:
+                        error_msg = f'الكتاب {book_id} ({term}) غير موجود في مخزون المحافظة'
+                        logger.error(f'[INVENTORY] {error_msg}')
+                        errors.append(error_msg)
+                    except Exception as e:
+                        error_msg = f'خطأ في خصم الكتاب {book_id}: {str(e)}'
+                        logger.exception(f'[INVENTORY] {error_msg}')
+                        errors.append(error_msg)
+                
+                if errors:
+                    raise Exception('فشل في خصم بعض الكتب')
+                
+                return {
+                    'success': True,
+                    'message': f'تم خصم {len(deducted_items)} كتاب من المخزون',
+                    'deducted_items': deducted_items,
+                    'errors': []
+                }
+                
+        except Exception as e:
+            logger.exception(f'[INVENTORY] Failed to deduct inventory for school shipment #{shipment.id}: {str(e)}')
+            return {
+                'success': False,
+                'message': f'فشل في خصم الكميات: {str(e)}',
+                'deducted_items': deducted_items,
+                'errors': errors
+            }

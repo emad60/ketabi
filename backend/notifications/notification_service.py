@@ -267,7 +267,17 @@ class NotificationService:
     @staticmethod
     def notify_shipment_assigned(shipment):
         """إشعار المندوب بإسناد شحنة له"""
+        from warehouses.models import MinistryToProvinceShipment, ProvinceToSchoolShipment
+        
         if shipment.assigned_courier:
+            # تحديد الوجهة حسب نوع الشحنة
+            if isinstance(shipment, MinistryToProvinceShipment):
+                destination = shipment.to_province.province.name if shipment.to_province and shipment.to_province.province else 'غير محدد'
+            elif isinstance(shipment, ProvinceToSchoolShipment):
+                destination = shipment.to_school.name if shipment.to_school else 'غير محدد'
+            else:
+                destination = 'غير محدد'
+            
             NotificationService.send_notification(
                 users=[shipment.assigned_courier],
                 notification_type='shipment_assigned',
@@ -275,7 +285,7 @@ class NotificationService:
                 message=f'تم إسناد الشحنة #{shipment.tracking_code or shipment.id} لك - {len(shipment.books or [])} كتاب',
                 metadata={
                     'books_count': len(shipment.books or []),
-                    'destination': shipment.to_school_name or (shipment.to_province.name if shipment.to_province else ''),
+                    'destination': destination,
                 },
                 related_object_type='shipment',
                 related_object_id=shipment.id
@@ -285,8 +295,9 @@ class NotificationService:
     def notify_shipment_out_for_delivery(shipment):
         """إشعار الجهة المستقبلة بخروج الشحنة للتوصيل"""
         from users.models import User
+        from warehouses.models import MinistryToProvinceShipment, ProvinceToSchoolShipment
         
-        if shipment.courier_role == 'ministry_courier' and shipment.to_province:
+        if isinstance(shipment, MinistryToProvinceShipment) and shipment.to_province:
             province_users = User.objects.filter(
                 Q(role__in=['province_admin', 'province_staff', 'province_warehouse']) &
                 Q(province=shipment.to_province.province) &
@@ -302,7 +313,7 @@ class NotificationService:
                 related_object_id=shipment.id
             )
         
-        elif shipment.courier_role == 'province_courier' and shipment.related_school_request:
+        elif isinstance(shipment, ProvinceToSchoolShipment) and shipment.related_school_request:
             if shipment.related_school_request.school.admin:
                 NotificationService.send_notification(
                     users=[shipment.related_school_request.school.admin],
@@ -317,9 +328,10 @@ class NotificationService:
     def notify_shipment_delivered(shipment):
         """إشعار جميع الأطراف بتوصيل الشحنة"""
         from users.models import User
+        from warehouses.models import MinistryToProvinceShipment, ProvinceToSchoolShipment
         
         # إشعار الجهة المرسلة (الوزارة أو المحافظة)
-        if shipment.courier_role == 'ministry_courier':
+        if isinstance(shipment, MinistryToProvinceShipment):
             # إشعار الوزارة بالتوصيل الناجح
             ministry_users = User.objects.filter(
                 role__in=['ministry_admin', 'ministry_staff'],
@@ -330,7 +342,7 @@ class NotificationService:
                 users=list(ministry_users),
                 notification_type='shipment_delivered',
                 title='✅ تم توصيل الشحنة',
-                message=f'تم توصيل الشحنة #{shipment.tracking_code or shipment.id} إلى {shipment.to_province.province if shipment.to_province else ""}',
+                message=f'تم توصيل الشحنة #{shipment.tracking_code or shipment.id} إلى {shipment.to_province.province.name if shipment.to_province and shipment.to_province.province else ""}',
                 related_object_type='shipment',
                 related_object_id=shipment.id
             )
@@ -352,12 +364,12 @@ class NotificationService:
                     related_object_id=shipment.id
                 )
         
-        elif shipment.courier_role == 'province_courier':
+        elif isinstance(shipment, ProvinceToSchoolShipment):
             # إشعار المحافظة
-            if shipment.to_province:
+            if shipment.from_province:
                 province_users = User.objects.filter(
                     Q(role__in=['province_admin', 'province_staff']) &
-                    Q(province=shipment.to_province.province) &
+                    Q(province=shipment.from_province.province) &
                     Q(is_active=True)
                 )[:5]
                 
@@ -365,7 +377,7 @@ class NotificationService:
                     users=list(province_users),
                     notification_type='shipment_delivered',
                     title='✅ تم توصيل الشحنة',
-                    message=f'تم توصيل الشحنة #{shipment.tracking_code or shipment.id} إلى {shipment.to_school_name}',
+                    message=f'تم توصيل الشحنة #{shipment.tracking_code or shipment.id} إلى {shipment.to_school.name if shipment.to_school else ""}',
                     related_object_type='shipment',
                     related_object_id=shipment.id
                 )

@@ -1,6 +1,13 @@
 # warehouses/admin.py
 from django.contrib import admin
-from .models import MinistryWarehouse, ProvinceWarehouse, WarehouseStock, Shipment, StockMovement
+from .models import (
+    MinistryWarehouse, 
+    ProvinceWarehouse, 
+    WarehouseStock, 
+    MinistryToProvinceShipment,
+    ProvinceToSchoolShipment,
+    StockMovement
+)
 
 
 @admin.register(MinistryWarehouse)
@@ -46,11 +53,12 @@ class WarehouseStockAdmin(admin.ModelAdmin):
         return "⚠️ منخفض" if obj.is_low_stock() else "✅ جيد"
     is_low_stock_display.short_description = 'حالة المخزون'
 
-@admin.register(Shipment)
-class ShipmentAdmin(admin.ModelAdmin):
+
+@admin.register(MinistryToProvinceShipment)
+class MinistryToProvinceShipmentAdmin(admin.ModelAdmin):
     list_display = [
         'id', 
-        'courier_role_display',
+        'tracking_code',
         'get_from_display',
         'get_to_display', 
         'get_assigned_courier',
@@ -59,40 +67,78 @@ class ShipmentAdmin(admin.ModelAdmin):
     ]
     
     list_filter = [
-        'courier_role',
         'status',
-        'created_at'
+        'created_at',
+        'from_ministry',
+        'to_province'
     ]
     
-    readonly_fields = ['created_at', 'updated_at', 'qr_code']
-    
-    search_fields = ['to_school_name', 'to_province__name', 'assigned_courier__username']
+    readonly_fields = ['tracking_code', 'created_at', 'updated_at', 'qr_code_image']
+    search_fields = ['tracking_code', 'to_province__name', 'assigned_courier__username']
     
     def get_from_display(self, obj):
         return obj.from_ministry.name if obj.from_ministry else '-'
-    get_from_display.short_description = 'من المستودع'
+    get_from_display.short_description = 'من مخزن الوزارة'
     
     def get_to_display(self, obj):
         if obj.to_province:
             return f"{obj.to_province.name} - {obj.to_province.province}"
-        elif obj.to_school_name:
-            return f"مدرسة: {obj.to_school_name}"
         return '-'
-    get_to_display.short_description = 'إلى'
+    get_to_display.short_description = 'إلى مخزن المحافظة'
     
     def get_assigned_courier(self, obj):
         if obj.assigned_courier:
             return obj.assigned_courier.full_name or obj.assigned_courier.username
         return "غير مسند"
-    get_assigned_courier.short_description = 'المندوب المسند'
-    
-    def courier_role_display(self, obj):
-        return obj.get_courier_role_display()
-    courier_role_display.short_description = 'نوع المندوب'
+    get_assigned_courier.short_description = 'مندوب الوزارة'
     
     def status_display(self, obj):
         return obj.get_status_display()
     status_display.short_description = 'الحالة'
+
+
+@admin.register(ProvinceToSchoolShipment)
+class ProvinceToSchoolShipmentAdmin(admin.ModelAdmin):
+    list_display = [
+        'id', 
+        'tracking_code',
+        'get_from_display',
+        'get_to_display', 
+        'get_assigned_courier',
+        'status_display',
+        'created_at'
+    ]
+    
+    list_filter = [
+        'status',
+        'created_at',
+        'from_province',
+        'to_school__province'
+    ]
+    
+    readonly_fields = ['tracking_code', 'created_at', 'updated_at', 'qr_code_image']
+    search_fields = ['tracking_code', 'to_school__name', 'assigned_courier__username']
+    
+    def get_from_display(self, obj):
+        return obj.from_province.name if obj.from_province else '-'
+    get_from_display.short_description = 'من مخزن المحافظة'
+    
+    def get_to_display(self, obj):
+        if obj.to_school:
+            return f"{obj.to_school.name} - {obj.to_school.province.name}"
+        return '-'
+    get_to_display.short_description = 'إلى المدرسة'
+    
+    def get_assigned_courier(self, obj):
+        if obj.assigned_courier:
+            return obj.assigned_courier.full_name or obj.assigned_courier.username
+        return "غير مسند"
+    get_assigned_courier.short_description = 'مندوب المحافظة'
+    
+    def status_display(self, obj):
+        return obj.get_status_display()
+    status_display.short_description = 'الحالة'
+
 
 @admin.register(StockMovement)
 class StockMovementAdmin(admin.ModelAdmin):

@@ -17,7 +17,6 @@ from school_requests.views import SchoolRequestViewSet
 from warehouses.views import (
     MinistryWarehouseViewSet,
     ProvinceWarehouseViewSet,
-    ShipmentViewSet,
     WarehouseStockViewSet,
 )
 
@@ -43,7 +42,6 @@ router.register(r'school-requests', SchoolRequestViewSet, basename='school-reque
 # ✅ warehouses مسجلة في الـ Router الرئيسي
 router.register(r"warehouses/ministry", MinistryWarehouseViewSet, basename="ministry-warehouse")
 router.register(r"warehouses/province", ProvinceWarehouseViewSet, basename="province-warehouse")
-router.register(r"warehouses/shipments", ShipmentViewSet, basename="shipment")
 router.register(r"warehouses/stocks", WarehouseStockViewSet, basename="warehouse-stock")
 #router.register(r"warehouses/reports", ReportViewSet, basename="report")
 

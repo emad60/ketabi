@@ -6,7 +6,7 @@ from celery import shared_task
 from django.db import transaction
 from django.core.mail import send_mail
 from django.conf import settings
-from .models import Shipment, WarehouseStock, StockMovement
+from .models import WarehouseStock, StockMovement, MinistryToProvinceShipment, ProvinceToSchoolShipment
 
 @shared_task
 def deduct_stock_after_confirmation(shipment_id: int):

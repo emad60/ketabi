@@ -13,6 +13,10 @@ class MinistryWarehouse(models.Model):
     location = models.CharField(max_length=255)
     staff = models.ManyToManyField(User, related_name='ministry_warehouses', blank=True)
 
+    class Meta:
+        verbose_name = "مستودع الوزارة"
+        verbose_name_plural = "مستودعات الوزارة"
+
     def __str__(self):
         return f"{self.name} (وزارة)"
 
@@ -22,14 +26,12 @@ class ProvinceWarehouse(models.Model):
     province = models.CharField(max_length=255)
     staff = models.ManyToManyField(User, related_name='province_warehouses', blank=True)
 
+    class Meta:
+        verbose_name = "مستودع المحافظة"
+        verbose_name_plural = "مستودعات المحافظات"
+
     def __str__(self):
         return f"{self.name} - {self.province}"
-
-# نوع المندوب
-COURIER_ROLE_CHOICES = [
-    ("ministry_courier", "مندوب الوزارة → المحافظة"),
-    ("province_courier", "مندوب المحافظة → المدرسة"),
-]
 
 # حالات الشحنة
 STATUS_CHOICES = [
@@ -41,122 +43,434 @@ STATUS_CHOICES = [
     ("canceled", "ملغاة"),
 ]
 
-class Shipment(models.Model):
-    # Tracking code - unique identifier  
-    tracking_code = models.CharField(max_length=50, blank=True, null=True, db_index=True, help_text="كود التتبع الفريد")
+# نوع المندوب (للتوافق مع الموديل القديم)
+COURIER_ROLE_CHOICES = [
+    ("ministry_courier", "مندوب الوزارة → المحافظة"),
+    ("province_courier", "مندوب المحافظة → المدرسة"),
+]
+
+# ====================================
+# شحنات الوزارة → المحافظة
+# ====================================
+class MinistryToProvinceShipment(models.Model):
+    """شحنة من الوزارة إلى المحافظة"""
     
-    # المسار 1: وزارة → محافظة
+    # كود التتبع
+    tracking_code = models.CharField(
+        max_length=50, 
+        blank=True, 
+        null=True, 
+        db_index=True, 
+        verbose_name="كود التتبع",
+        help_text="كود التتبع الفريد للشحنة"
+    )
+    
+    # المسار: وزارة → محافظة
     from_ministry = models.ForeignKey(
         MinistryWarehouse,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="shipments_out"
+        related_name="ministry_shipments_out",
+        verbose_name="من مخزن الوزارة"
     )
     to_province = models.ForeignKey(
         ProvinceWarehouse,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="shipments_in"
+        related_name="ministry_shipments_in",
+        verbose_name="إلى مخزن المحافظة"
     )
     
-    # المسار 2: محافظة → مدرسة
-    to_school_name = models.CharField(max_length=255, blank=True, default="")
-    
     # العناصر
-    books = models.JSONField()
+    books = models.JSONField(verbose_name="الكتب")
     
-    # المندوب
-    courier_role = models.CharField(max_length=32, choices=COURIER_ROLE_CHOICES)
+    # المندوب (مندوب الوزارة)
     assigned_courier = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="assigned_shipments"
+        related_name="ministry_assigned_shipments",
+        limit_choices_to={'role': 'ministry_driver'},
+        verbose_name="المندوب المكلف",
+        help_text="مندوب الوزارة المكلف بالتوصيل"
     )
     
-    # QR
-    qr_code = models.CharField(max_length=255, blank=True, default="")
-    
     # الحالة
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
+    status = models.CharField(
+        max_length=20, 
+        choices=STATUS_CHOICES, 
+        default="pending",
+        verbose_name="الحالة"
+    )
     
-    # تتبع GPS للمندوب (Mobile App)
-    current_latitude = models.FloatField(null=True, blank=True, help_text="موقع المندوب الحالي - خط العرض")
-    current_longitude = models.FloatField(null=True, blank=True, help_text="موقع المندوب الحالي - خط الطول")
-    last_location_update = models.DateTimeField(null=True, blank=True, help_text="آخر تحديث للموقع")
+    # تتبع GPS للمندوب
+    current_latitude = models.FloatField(
+        null=True, 
+        blank=True, 
+        verbose_name="خط العرض الحالي",
+        help_text="موقع المندوب الحالي - خط العرض"
+    )
+    current_longitude = models.FloatField(
+        null=True, 
+        blank=True, 
+        verbose_name="خط الطول الحالي",
+        help_text="موقع المندوب الحالي - خط الطول"
+    )
+    last_location_update = models.DateTimeField(
+        null=True, 
+        blank=True, 
+        verbose_name="آخر تحديث للموقع",
+        help_text="آخر تحديث لموقع المندوب"
+    )
     
-    # إثبات التسليم (Mobile App)
-    proof_photo = models.ImageField(upload_to='shipments/proof/', null=True, blank=True, help_text="صورة إثبات التسليم")
-    digital_signature = models.ImageField(upload_to='shipments/signatures/', null=True, blank=True, help_text="التوقيع الرقمي")
-    recipient_name = models.CharField(max_length=255, blank=True, default="", help_text="اسم المستلم")
-    delivery_notes = models.TextField(blank=True, default="", help_text="ملاحظات التسليم")
+    # إثبات التسليم
+    proof_photo = models.ImageField(
+        upload_to='shipments/ministry/proof/', 
+        null=True, 
+        blank=True, 
+        verbose_name="صورة إثبات التسليم",
+        help_text="صورة تثبت استلام الشحنة"
+    )
+    digital_signature = models.ImageField(
+        upload_to='shipments/ministry/signatures/', 
+        null=True, 
+        blank=True, 
+        verbose_name="التوقيع الرقمي",
+        help_text="التوقيع الرقمي للمستلم"
+    )
+    recipient_name = models.CharField(
+        max_length=255, 
+        blank=True, 
+        default="", 
+        verbose_name="اسم المستلم",
+        help_text="اسم الشخص الذي استلم الشحنة"
+    )
+    delivery_notes = models.TextField(
+        blank=True, 
+        default="", 
+        verbose_name="ملاحظات التسليم",
+        help_text="ملاحظات حول عملية التسليم"
+    )
+    delivery_condition = models.CharField(
+        max_length=20, 
+        blank=True, 
+        default="good", 
+        verbose_name="حالة التسليم",
+        help_text="حالة الشحنة عند التسليم (جيدة/تالفة)"
+    )
     
-    # Additional mobile fields
-    driver_location = models.JSONField(null=True, blank=True, help_text="Driver location data")
-    delivery_photos = models.JSONField(default=list, blank=True, help_text="List of delivery photo paths")
-    signature_path = models.CharField(max_length=500, blank=True, help_text="Path to signature file")
-    signature_uploaded_at = models.DateTimeField(null=True, blank=True)
-    receiver_notes = models.TextField(blank=True, default="", help_text="School receiver notes")
-    delivery_condition = models.CharField(max_length=20, blank=True, default="good", help_text="good/damaged")
     confirmed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="confirmed_shipments",
-        help_text="School staff who confirmed receipt"
+        related_name="ministry_confirmed_shipments",
+        verbose_name="تم التأكيد بواسطة",
+        help_text="موظف المحافظة الذي أكد الاستلام"
     )
-    confirmed_at = models.DateTimeField(null=True, blank=True, help_text="When school confirmed receipt")
+    confirmed_at = models.DateTimeField(
+        null=True, 
+        blank=True, 
+        verbose_name="تاريخ التأكيد",
+        help_text="تاريخ ووقت تأكيد المحافظة للاستلام"
+    )
     
     # طوابع وقت
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    started_delivery_at = models.DateTimeField(null=True, blank=True, help_text="وقت بدء التوصيل")
-    delivered_at = models.DateTimeField(null=True, blank=True, help_text="وقت التسليم الفعلي")
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="تاريخ الإنشاء"
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name="تاريخ التحديث"
+    )
+    started_delivery_at = models.DateTimeField(
+        null=True, 
+        blank=True, 
+        verbose_name="وقت بدء التوصيل",
+        help_text="التاريخ والوقت الذي بدأ فيه التوصيل"
+    )
+    delivered_at = models.DateTimeField(
+        null=True, 
+        blank=True, 
+        verbose_name="وقت التسليم",
+        help_text="التاريخ والوقت الفعلي للتسليم"
+    )
 
-    # Optional link back to a province book request (if shipment was created from a request)
+    # ربط بطلب الكتب من المحافظة
     related_request = models.ForeignKey(
         'book_requests.BookRequest',
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='shipments_from_request',
-        help_text='Optional link to the originating book request'
+        related_name='ministry_shipments',
+        verbose_name="الطلب المرتبط",
+        help_text='ربط بطلب الكتب الأصلي من المحافظة'
     )
     
-    # Optional link back to a school request (if shipment was created from a school request)
+    # QR Code للتسليم والتأكيد
+    qr_token = models.CharField(
+        max_length=64, 
+        unique=True, 
+        null=True, 
+        blank=True, 
+        verbose_name="رمز QR",
+        help_text="رمز فريد لرمز الاستجابة السريع"
+    )
+    qr_code_image = models.TextField(
+        null=True, 
+        blank=True, 
+        verbose_name="صورة رمز QR",
+        help_text="صورة رمز الاستجابة السريع بصيغة base64"
+    )
+    qr_expires_at = models.DateTimeField(
+        null=True, 
+        blank=True, 
+        verbose_name="تاريخ انتهاء رمز QR",
+        help_text="تاريخ انتهاء صلاحية رمز الاستجابة السريع"
+    )
+    qr_used = models.BooleanField(
+        default=False, 
+        verbose_name="تم استخدام رمز QR",
+        help_text="هل تم استخدام رمز الاستجابة السريع للتأكيد"
+    )
+    qr_scanned_at = models.DateTimeField(
+        null=True, 
+        blank=True, 
+        verbose_name="وقت مسح رمز QR",
+        help_text="التاريخ والوقت الذي تم فيه مسح رمز الاستجابة السريع"
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "شحنة الوزارة للمحافظة"
+        verbose_name_plural = "شحنات الوزارة للمحافظات"
+    
+    def save(self, *args, **kwargs):
+        # توليد كود التتبع إذا لم يكن موجوداً
+        if not self.tracking_code:
+            import uuid
+            self.tracking_code = f"MTP-{uuid.uuid4().hex[:12].upper()}"
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        target = self.to_province.province if self.to_province else "غير محدد"
+        return f"شحنة وزارة #{self.pk} → {target} [{self.get_status_display()}]"
+
+
+# ====================================
+# شحنات المحافظة → المدرسة
+# ====================================
+class ProvinceToSchoolShipment(models.Model):
+    """شحنة من المحافظة إلى المدرسة"""
+    
+    # كود التتبع
+    tracking_code = models.CharField(
+        max_length=50, 
+        blank=True, 
+        null=True, 
+        db_index=True, 
+        verbose_name="كود التتبع",
+        help_text="كود التتبع الفريد للشحنة"
+    )
+    
+    # المسار: محافظة → مدرسة
+    from_province = models.ForeignKey(
+        ProvinceWarehouse,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="province_shipments_out",
+        verbose_name="من مخزن المحافظة"
+    )
+    to_school = models.ForeignKey(
+        'schools.School',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="school_shipments_in",
+        verbose_name="إلى المدرسة"
+    )
+    
+    # العناصر
+    books = models.JSONField(verbose_name="الكتب")
+    
+    # المندوب (مندوب المحافظة)
+    assigned_courier = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="province_assigned_shipments",
+        limit_choices_to={'role': 'province_driver'},
+        verbose_name="المندوب المكلف",
+        help_text="مندوب المحافظة المكلف بالتوصيل"
+    )
+    
+    # الحالة
+    status = models.CharField(
+        max_length=20, 
+        choices=STATUS_CHOICES, 
+        default="pending",
+        verbose_name="الحالة"
+    )
+    
+    # تتبع GPS للمندوب
+    current_latitude = models.FloatField(
+        null=True, 
+        blank=True, 
+        verbose_name="خط العرض الحالي",
+        help_text="موقع المندوب الحالي - خط العرض"
+    )
+    current_longitude = models.FloatField(
+        null=True, 
+        blank=True, 
+        verbose_name="خط الطول الحالي",
+        help_text="موقع المندوب الحالي - خط الطول"
+    )
+    last_location_update = models.DateTimeField(
+        null=True, 
+        blank=True, 
+        verbose_name="آخر تحديث للموقع",
+        help_text="آخر تحديث لموقع المندوب"
+    )
+    
+    # إثبات التسليم
+    proof_photo = models.ImageField(
+        upload_to='shipments/province/proof/', 
+        null=True, 
+        blank=True, 
+        verbose_name="صورة إثبات التسليم",
+        help_text="صورة تثبت استلام الشحنة"
+    )
+    digital_signature = models.ImageField(
+        upload_to='shipments/province/signatures/', 
+        null=True, 
+        blank=True, 
+        verbose_name="التوقيع الرقمي",
+        help_text="التوقيع الرقمي للمستلم"
+    )
+    recipient_name = models.CharField(
+        max_length=255, 
+        blank=True, 
+        default="", 
+        verbose_name="اسم المستلم",
+        help_text="اسم الشخص الذي استلم الشحنة"
+    )
+    delivery_notes = models.TextField(
+        blank=True, 
+        default="", 
+        verbose_name="ملاحظات التسليم",
+        help_text="ملاحظات حول عملية التسليم"
+    )
+    delivery_condition = models.CharField(
+        max_length=20, 
+        blank=True, 
+        default="good", 
+        verbose_name="حالة التسليم",
+        help_text="حالة الشحنة عند التسليم (جيدة/تالفة)"
+    )
+    
+    confirmed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="province_confirmed_shipments",
+        verbose_name="تم التأكيد بواسطة",
+        help_text="موظف المدرسة الذي أكد الاستلام"
+    )
+    confirmed_at = models.DateTimeField(
+        null=True, 
+        blank=True, 
+        verbose_name="تاريخ التأكيد",
+        help_text="تاريخ ووقت تأكيد المدرسة للاستلام"
+    )
+    
+    # طوابع وقت
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="تاريخ الإنشاء"
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name="تاريخ التحديث"
+    )
+    started_delivery_at = models.DateTimeField(
+        null=True, 
+        blank=True, 
+        verbose_name="وقت بدء التوصيل",
+        help_text="التاريخ والوقت الذي بدأ فيه التوصيل"
+    )
+    delivered_at = models.DateTimeField(
+        null=True, 
+        blank=True, 
+        verbose_name="وقت التسليم",
+        help_text="التاريخ والوقت الفعلي للتسليم"
+    )
+
+    # ربط بطلب المدرسة
     related_school_request = models.ForeignKey(
         'school_requests.SchoolRequest',
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='shipments_from_school_request',
-        help_text='Optional link to the originating school request'
+        related_name='province_shipments',
+        verbose_name="الطلب المرتبط",
+        help_text='ربط بطلب الكتب الأصلي من المدرسة'
     )
     
     # QR Code للتسليم والتأكيد
-    qr_token = models.CharField(max_length=64, unique=True, null=True, blank=True, help_text="رمز فريد للـ QR Code")
-    qr_code_image = models.TextField(null=True, blank=True, help_text="صورة QR Code بصيغة base64")
-    qr_expires_at = models.DateTimeField(null=True, blank=True, help_text="تاريخ انتهاء صلاحية الـ QR Code")
-    qr_used = models.BooleanField(default=False, help_text="هل تم استخدام الـ QR Code للتأكيد")
-    qr_scanned_at = models.DateTimeField(null=True, blank=True, help_text="وقت مسح الـ QR Code")
+    qr_token = models.CharField(
+        max_length=64, 
+        unique=True, 
+        null=True, 
+        blank=True, 
+        verbose_name="رمز QR",
+        help_text="رمز فريد لرمز الاستجابة السريع"
+    )
+    qr_code_image = models.TextField(
+        null=True, 
+        blank=True, 
+        verbose_name="صورة رمز QR",
+        help_text="صورة رمز الاستجابة السريع بصيغة base64"
+    )
+    qr_expires_at = models.DateTimeField(
+        null=True, 
+        blank=True, 
+        verbose_name="تاريخ انتهاء رمز QR",
+        help_text="تاريخ انتهاء صلاحية رمز الاستجابة السريع"
+    )
+    qr_used = models.BooleanField(
+        default=False, 
+        verbose_name="تم استخدام رمز QR",
+        help_text="هل تم استخدام رمز الاستجابة السريع للتأكيد"
+    )
+    qr_scanned_at = models.DateTimeField(
+        null=True, 
+        blank=True, 
+        verbose_name="وقت مسح رمز QR",
+        help_text="التاريخ والوقت الذي تم فيه مسح رمز الاستجابة السريع"
+    )
 
     class Meta:
         ordering = ["-created_at"]
+        verbose_name = "شحنة المحافظة للمدرسة"
+        verbose_name_plural = "شحنات المحافظة للمدارس"
     
     def save(self, *args, **kwargs):
-        # Generate tracking code if not exists
+        # توليد كود التتبع إذا لم يكن موجوداً
         if not self.tracking_code:
             import uuid
-            self.tracking_code = f"SHP-{uuid.uuid4().hex[:12].upper()}"
+            self.tracking_code = f"PTS-{uuid.uuid4().hex[:12].upper()}"
         super().save(*args, **kwargs)
 
     def __str__(self):
-        target = self.to_province.province if self.to_province else (self.to_school_name or "N/A")
-        return f"Shipment#{self.pk} → {target} [{self.status}]"
+        target = self.to_school.name if self.to_school else "غير محدد"
+        return f"شحنة محافظة #{self.pk} → {target} [{self.get_status_display()}]"
 
 # نظام المخزون التفصيلي
 class WarehouseStock(models.Model):
@@ -193,6 +507,8 @@ class WarehouseStock(models.Model):
             ['ministry_warehouse', 'book', 'term'],
             ['province_warehouse', 'book', 'term']
         ]
+        verbose_name = "مخزون المستودع"
+        verbose_name_plural = "مخزون المستودعات"
 
     def __str__(self):
         warehouse_name = self.ministry_warehouse.name if self.ministry_warehouse else self.province_warehouse.name
@@ -218,7 +534,7 @@ class StockMovement(models.Model):
     previous_quantity = models.PositiveIntegerField()
     new_quantity = models.PositiveIntegerField()
     
-    shipment = models.ForeignKey('Shipment', on_delete=models.SET_NULL, null=True, blank=True)
+    # Note: Shipment reference removed - use MinistryToProvinceShipment or ProvinceToSchoolShipment if needed
     
     reason = models.TextField(blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
@@ -226,6 +542,8 @@ class StockMovement(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+        verbose_name = "حركة المخزون"
+        verbose_name_plural = "حركات المخزون"
 
     def __str__(self):
         return f"{self.get_movement_type_display()} - {self.stock} - {self.quantity}"

@@ -8,7 +8,8 @@ from rest_framework import serializers
 from .models import (
     MinistryWarehouse,
     ProvinceWarehouse,
-    Shipment,
+    MinistryToProvinceShipment,
+    ProvinceToSchoolShipment,
     WarehouseStock,
     StockMovement,
 )
@@ -156,278 +157,6 @@ class StockMovementSerializer(serializers.ModelSerializer):
 
 
 # =========================
-#        Shipments
-# =========================
-
-class ShipmentSerializer(serializers.ModelSerializer):
-    """
-    سيريالايزر للشحنات
-    يتضمن: التحقق من المخزون، توليد QR، وإدارة حالة الشحنة
-    """
-    # معلومات مساعدة للعرض
-    from_ministry_name = serializers.CharField(source="from_ministry.name", read_only=True)
-    from_province_name = serializers.SerializerMethodField(read_only=True)
-    to_province_name = serializers.CharField(source="to_province.name", read_only=True)
-    assigned_courier_name = serializers.CharField(source="assigned_courier.full_name", read_only=True)
-    assigned_courier_details = serializers.SerializerMethodField(read_only=True)
-    related_request_number = serializers.CharField(source="related_request.request_number", read_only=True)
-    related_school_request_number = serializers.CharField(source="related_school_request.request_number", read_only=True)
-    books_details = serializers.SerializerMethodField(read_only=True)  # 🔥 تفاصيل الكتب موسعة
-
-    # فحوصات المخزون (نملؤها في validate)
-    stock_available = serializers.BooleanField(read_only=True)
-    stock_issues = serializers.ListField(child=serializers.CharField(), read_only=True)
-
-    def get_from_province_name(self, obj):
-        """الحصول على اسم المحافظة المرسلة (للشحنات من المحافظة للمدارس)"""
-        if obj.related_school_request and obj.related_school_request.school:
-            school = obj.related_school_request.school
-            if hasattr(school, 'province') and school.province:
-                return school.province.name
-        return None
-
-    def get_assigned_courier_details(self, obj):
-        """إرجاع تفاصيل المندوب"""
-        if obj.assigned_courier:
-            return {
-                "id": obj.assigned_courier.id,
-                "username": obj.assigned_courier.username,
-                "full_name": obj.assigned_courier.full_name,
-            }
-        return None
-    
-    def get_books_details(self, obj):
-        """توسيع تفاصيل الكتب من JSON إلى كائنات كاملة"""
-        if not obj.books or not isinstance(obj.books, list):
-            return []
-        
-        from books.models import Book
-        expanded_books = []
-        
-        for book_item in obj.books:
-            book_id = book_item.get('book_id')
-            if not book_id:
-                continue
-                
-            try:
-                book = Book.objects.select_related('subject', 'grade', 'term').get(id=book_id)
-                expanded_books.append({
-                    'book_id': book.id,
-                    'book': {
-                        'id': book.id,
-                        'subject': book.subject.id if book.subject else None,
-                        'subject_display': book.subject.name if book.subject else 'غير محدد',
-                        'grade': book.grade.id if book.grade else None,
-                        'grade_display': book.grade.name if book.grade else 'غير محدد',
-                        'title': book.title,
-                    },
-                    'quantity': book_item.get('quantity', 0),
-                    'term': book.term.name if book.term else book_item.get('term', ''),
-                })
-            except Book.DoesNotExist:
-                # إذا لم يوجد الكتاب، احتفظ بالبيانات الأصلية
-                expanded_books.append({
-                    'book_id': book_id,
-                    'book': None,
-                    'quantity': book_item.get('quantity', 0),
-                    'term': book_item.get('term', ''),
-                })
-        
-        return expanded_books
-
-    class Meta:
-        model = Shipment
-        fields = [
-            "related_request",
-            "related_school_request",
-            "related_request_number",
-            "related_school_request_number",
-            "id",
-            "tracking_code",
-            "from_ministry",
-            "from_ministry_name",
-            "from_province_name",
-            "to_province",
-            "to_province_name",
-            "to_school_name",
-            "courier_role",
-            "assigned_courier",
-            "assigned_courier_name",
-            "assigned_courier_details",
-            "books",        # صيغة JSON الأصلية: [{book_id, quantity, term}, ...]
-            "books_details",  # 🔥 تفاصيل موسعة للكتب
-            "qr_code",
-            "status",
-            # GPS Tracking
-            "current_latitude",
-            "current_longitude",
-            "last_location_update",
-            # Proof of Delivery
-            "proof_photo",
-            "digital_signature",
-            "recipient_name",
-            "delivery_notes",
-            # Timestamps
-            "created_at",
-            "updated_at",
-            "started_delivery_at",
-            "delivered_at",
-            # Stock validation
-            "stock_available",
-            "stock_issues",
-            # QR Code fields
-            "qr_token",
-            "qr_code_image",
-            "qr_expires_at",
-            "qr_used",
-            "qr_scanned_at",
-        ]
-        read_only_fields = [
-            "id",
-            "qr_code",
-            "tracking_code",
-            "created_at",
-            "updated_at",
-            "from_ministry_name",
-            "to_province_name",
-            "assigned_courier_name",
-            "assigned_courier_details",
-            "related_request_number",
-            "related_school_request_number",
-            "stock_available",
-            "stock_issues",
-            "last_location_update",
-            "started_delivery_at",
-            "delivered_at",
-            "qr_token",
-            "qr_code_image",
-            "qr_expires_at",
-            "qr_used",
-            "qr_scanned_at",
-        ]
-
-    def validate_books(self, value):
-        if not isinstance(value, list):
-            raise serializers.ValidationError("books must be a list of {book_id, quantity, term} objects.")
-
-        for item in value:
-            if not all(k in item for k in ("book_id", "quantity", "term")):
-                raise serializers.ValidationError("Each item must contain: book_id, quantity, term.")
-
-            # book_id
-            try:
-                book_id = int(item["book_id"])
-            except (TypeError, ValueError):
-                raise serializers.ValidationError("book_id must be an integer")
-
-            if not Book.objects.filter(id=book_id).exists():
-                raise serializers.ValidationError(f"book_id {book_id} does not exist.")
-
-            # quantity
-            try:
-                qty = int(item["quantity"])
-            except (TypeError, ValueError):
-                raise serializers.ValidationError("quantity must be an integer")
-
-            if qty <= 0:
-                raise serializers.ValidationError("quantity must be > 0")
-
-            # term
-            if str(item["term"]) not in ("first", "second"):
-                raise serializers.ValidationError("term must be 'first' or 'second'")
-
-        return value
-
-    def validate(self, attrs):
-        # Backwards-compatibility: accept `related_request_id` in incoming payloads
-        # and map it to `related_request` FK for persisted linkage
-        if 'related_request_id' in getattr(self, 'initial_data', {}):
-            try:
-                rid = int(self.initial_data.get('related_request_id'))
-                rq = BookRequest.objects.filter(id=rid).first()
-                if rq:
-                    attrs['related_request'] = rq
-            except Exception:
-                pass
-
-        # نتحقق من توفر المخزون في المستودع المصدر
-        role = attrs.get("courier_role") or (self.instance.courier_role if self.instance else None)
-        books = attrs.get("books", [])
-        if self.instance and not books:
-            books = self.instance.books or []
-
-        # تحديد المستودع المصدر بناءً على نوع المندوب
-        source_wh = None
-        if role == "ministry_courier":
-            source_wh = attrs.get("from_ministry") or (self.instance.from_ministry if self.instance else None)
-        elif role == "province_courier":
-            source_wh = attrs.get("to_province") or (self.instance.to_province if self.instance else None)
-
-        if source_wh and books:
-            stock_issues = []
-            for item in books:
-                book_id = int(item["book_id"])
-                qty = int(item["quantity"])
-                term = item.get("term", "")  # استخدم get بدلاً من [] المباشر
-
-                try:
-                    if role == "ministry_courier":
-                        stock = WarehouseStock.objects.get(
-                            ministry_warehouse=source_wh, book_id=book_id, term=term
-                        )
-                    else:
-                        stock = WarehouseStock.objects.get(
-                            province_warehouse=source_wh, book_id=book_id, term=term
-                        )
-
-                    if stock.quantity < qty:
-                        stock_issues.append(
-                            f"الكتاب {stock.book} ({term}) المتوفر {stock.quantity} أقل من المطلوب {qty}"
-                        )
-                except WarehouseStock.DoesNotExist:
-                    stock_issues.append(f"الكتاب id={book_id} ({term}) غير موجود في مخزون المستودع المصدر")
-
-            # نخزن النتيجة في context بدلاً من attrs
-            if stock_issues:
-                self.context['stock_available'] = False
-                self.context['stock_issues'] = stock_issues
-            else:
-                self.context['stock_available'] = True
-
-        return attrs
-
-    def _ensure_qr(self, shipment: Shipment):
-        """ينشئ QR ويحفظ المسار في الحقل إذا كان فارغاً."""
-        if not shipment.qr_code:
-            payload = pack_qr_payload(shipment)
-            png = make_qr_image_bytes(payload)
-            rel = save_qr_png_for_shipment(shipment, png)
-            shipment.qr_code = rel
-            shipment.save(update_fields=["qr_code"])
-
-    def create(self, validated_data):
-        shipment = super().create(validated_data)
-        # توليد QR بعد الإنشاء
-        self._ensure_qr(shipment)
-        
-        # 🔥 خصم المخزون مباشرة عند إنشاء الشحنة
-        from .tasks import deduct_stock_after_confirmation
-        deduct_stock_after_confirmation.delay(shipment.id)
-        
-        return shipment
-
-    def update(self, instance, validated_data):
-        prev_status = instance.status
-        instance = super().update(instance, validated_data)
-
-        # لو تغيّرت بيانات تؤثر على الـ QR (اختياري)
-        if any(k in validated_data for k in ("from_ministry", "to_province", "courier_role")):
-            self._ensure_qr(instance)
-
-        return instance
-
-
-# =========================
 #   Uploaded Reports serializers
 # =========================
 
@@ -517,4 +246,110 @@ class ExcelReportSerializer(serializers.ModelSerializer):
     def get_file_size_mb(self, obj):
         if obj.file_size:
             return round(obj.file_size / (1024 * 1024), 2)
+        return 0
+
+
+# =========================
+#   شحنات الوزارة → المحافظة
+# =========================
+
+class MinistryToProvinceShipmentSerializer(serializers.ModelSerializer):
+    """سيريالايزر لشحنات الوزارة إلى المحافظة"""
+    from_ministry_name = serializers.CharField(source='from_ministry.name', read_only=True)
+    to_province_name = serializers.CharField(source='to_province.name', read_only=True)
+    to_province_province = serializers.CharField(source='to_province.province', read_only=True)
+    assigned_courier_name = serializers.CharField(source='assigned_courier.full_name', read_only=True)
+    assigned_courier_phone = serializers.CharField(source='assigned_courier.phone', read_only=True, allow_null=True)
+    related_request_number = serializers.CharField(source='related_request.request_number', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    books_count = serializers.SerializerMethodField()
+    total_quantity = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = MinistryToProvinceShipment
+        fields = [
+            'id', 'tracking_code', 'from_ministry', 'from_ministry_name',
+            'to_province', 'to_province_name', 'to_province_province',
+            'books', 'books_count', 'total_quantity',
+            'assigned_courier', 'assigned_courier_name', 'assigned_courier_phone',
+            'status', 'status_display',
+            'current_latitude', 'current_longitude', 'last_location_update',
+            'proof_photo', 'digital_signature', 'recipient_name', 
+            'delivery_notes', 'delivery_condition',
+            'confirmed_by', 'confirmed_at',
+            'created_at', 'updated_at', 'started_delivery_at', 'delivered_at',
+            'related_request', 'related_request_number',
+            'qr_token', 'qr_code_image', 'qr_expires_at', 'qr_used', 'qr_scanned_at'
+        ]
+        read_only_fields = [
+            'id', 'tracking_code', 'created_at', 'updated_at',
+            'from_ministry_name', 'to_province_name', 'to_province_province',
+            'assigned_courier_name', 'assigned_courier_phone',
+            'related_request_number', 'status_display',
+            'books_count', 'total_quantity',
+            'qr_token', 'qr_code_image', 'qr_expires_at', 'qr_used', 'qr_scanned_at'
+        ]
+    
+    def get_books_count(self, obj):
+        if isinstance(obj.books, list):
+            return len(obj.books)
+        return 0
+    
+    def get_total_quantity(self, obj):
+        if isinstance(obj.books, list):
+            return sum(item.get('quantity', 0) for item in obj.books)
+        return 0
+
+
+# =========================
+#   شحنات المحافظة → المدرسة
+# =========================
+
+class ProvinceToSchoolShipmentSerializer(serializers.ModelSerializer):
+    """سيريالايزر لشحنات المحافظة إلى المدرسة"""
+    from_province_name = serializers.CharField(source='from_province.name', read_only=True)
+    from_province_province = serializers.CharField(source='from_province.province', read_only=True)
+    to_school_name = serializers.CharField(source='to_school.name', read_only=True)
+    to_school_province = serializers.CharField(source='to_school.province.name', read_only=True)
+    assigned_courier_name = serializers.CharField(source='assigned_courier.full_name', read_only=True)
+    assigned_courier_phone = serializers.CharField(source='assigned_courier.phone', read_only=True, allow_null=True)
+    related_school_request_number = serializers.IntegerField(source='related_school_request.id', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    books_count = serializers.SerializerMethodField()
+    total_quantity = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = ProvinceToSchoolShipment
+        fields = [
+            'id', 'tracking_code', 'from_province', 'from_province_name', 'from_province_province',
+            'to_school', 'to_school_name', 'to_school_province',
+            'books', 'books_count', 'total_quantity',
+            'assigned_courier', 'assigned_courier_name', 'assigned_courier_phone',
+            'status', 'status_display',
+            'current_latitude', 'current_longitude', 'last_location_update',
+            'proof_photo', 'digital_signature', 'recipient_name',
+            'delivery_notes', 'delivery_condition',
+            'confirmed_by', 'confirmed_at',
+            'created_at', 'updated_at', 'started_delivery_at', 'delivered_at',
+            'related_school_request', 'related_school_request_number',
+            'qr_token', 'qr_code_image', 'qr_expires_at', 'qr_used', 'qr_scanned_at'
+        ]
+        read_only_fields = [
+            'id', 'tracking_code', 'created_at', 'updated_at',
+            'from_province_name', 'from_province_province',
+            'to_school_name', 'to_school_province',
+            'assigned_courier_name', 'assigned_courier_phone',
+            'related_school_request_number', 'status_display',
+            'books_count', 'total_quantity',
+            'qr_token', 'qr_code_image', 'qr_expires_at', 'qr_used', 'qr_scanned_at'
+        ]
+    
+    def get_books_count(self, obj):
+        if isinstance(obj.books, list):
+            return len(obj.books)
+        return 0
+    
+    def get_total_quantity(self, obj):
+        if isinstance(obj.books, list):
+            return sum(item.get('quantity', 0) for item in obj.books)
         return 0

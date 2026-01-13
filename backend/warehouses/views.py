@@ -2187,6 +2187,98 @@ def get_shipments_list(request):
     })
 
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_shipment_detail(request, shipment_id):
+    """
+    جلب تفاصيل شحنة معينة - يبحث في كلا النوعين
+    """
+    user = request.user
+    
+    # Try Province to School first
+    try:
+        shipment = ProvinceToSchoolShipment.objects.select_related(
+            'from_province', 'to_school', 'assigned_courier'
+        ).get(id=shipment_id)
+        
+        # Check permissions
+        if user.role in ['province_admin', 'province_staff', 'province_warehouse']:
+            if hasattr(user, 'province') and user.province:
+                if shipment.from_province.province != user.province:
+                    return Response({'error': 'غير مصرح لك بعرض هذه الشحنة'}, status=status.HTTP_403_FORBIDDEN)
+        elif user.role == 'province_driver' and shipment.assigned_courier != user:
+            return Response({'error': 'غير مصرح لك بعرض هذه الشحنة'}, status=status.HTTP_403_FORBIDDEN)
+        elif user.role == 'school_staff':
+            if not hasattr(user, 'school') or user.school != shipment.to_school:
+                return Response({'error': 'غير مصرح لك بعرض هذه الشحنة'}, status=status.HTTP_403_FORBIDDEN)
+        
+        return Response({
+            'id': shipment.id,
+            'tracking_code': shipment.tracking_code,
+            'type': 'province_to_school',
+            'shipment_type': 'province_to_school',
+            'status': shipment.status,
+            'status_display': shipment.get_status_display(),
+            'from_location': shipment.from_province.province if shipment.from_province else 'غير محدد',
+            'to_location': shipment.to_school.name if shipment.to_school else 'غير محدد',
+            'to_school': {
+                'id': shipment.to_school.id,
+                'name': shipment.to_school.name,
+            } if shipment.to_school else None,
+            'courier': {
+                'id': shipment.assigned_courier.id,
+                'name': shipment.assigned_courier.full_name,
+                'phone': getattr(shipment.assigned_courier, 'phone', ''),
+            } if shipment.assigned_courier else None,
+            'books': shipment.books or [],
+            'books_count': len(shipment.books) if shipment.books else 0,
+            'notes': shipment.notes or '',
+            'created_at': shipment.created_at.isoformat(),
+            'delivered_at': shipment.delivered_at.isoformat() if shipment.delivered_at else None,
+        })
+    except ProvinceToSchoolShipment.DoesNotExist:
+        pass
+    
+    # Try Ministry to Province
+    try:
+        shipment = MinistryToProvinceShipment.objects.select_related(
+            'from_ministry', 'to_province', 'assigned_courier'
+        ).get(id=shipment_id)
+        
+        # Check permissions
+        if user.role in ['province_admin', 'province_staff', 'province_warehouse']:
+            if hasattr(user, 'province') and user.province:
+                if shipment.to_province.province != user.province:
+                    return Response({'error': 'غير مصرح لك بعرض هذه الشحنة'}, status=status.HTTP_403_FORBIDDEN)
+        elif user.role == 'ministry_driver' and shipment.assigned_courier != user:
+            return Response({'error': 'غير مصرح لك بعرض هذه الشحنة'}, status=status.HTTP_403_FORBIDDEN)
+        
+        return Response({
+            'id': shipment.id,
+            'tracking_code': shipment.tracking_code,
+            'type': 'ministry_to_province',
+            'shipment_type': 'ministry_to_province',
+            'status': shipment.status,
+            'status_display': shipment.get_status_display(),
+            'from_location': shipment.from_ministry.name if shipment.from_ministry else 'وزارة التربية',
+            'to_location': shipment.to_province.province if shipment.to_province else 'غير محدد',
+            'courier': {
+                'id': shipment.assigned_courier.id,
+                'name': shipment.assigned_courier.full_name,
+                'phone': getattr(shipment.assigned_courier, 'phone', ''),
+            } if shipment.assigned_courier else None,
+            'books': shipment.books or [],
+            'books_count': len(shipment.books) if shipment.books else 0,
+            'notes': shipment.notes or '',
+            'created_at': shipment.created_at.isoformat(),
+            'delivered_at': shipment.delivered_at.isoformat() if shipment.delivered_at else None,
+        })
+    except MinistryToProvinceShipment.DoesNotExist:
+        pass
+    
+    return Response({'error': 'الشحنة غير موجودة'}, status=status.HTTP_404_NOT_FOUND)
+
+
 # ====================================
 # ViewSets للشحنات المنفصلة
 # ====================================

@@ -36,6 +36,7 @@ from .views import (
     get_school_incoming_shipments,
     # Unified Shipments List
     get_shipments_list,
+    get_shipment_detail,
 )
 
 # Import mobile views
@@ -92,6 +93,7 @@ urlpatterns = [
     
     # Unified Shipments List (متوافق مع Frontend)
     path('shipments/', get_shipments_list, name='shipments-list'),
+    path('shipments/<int:shipment_id>/', get_shipment_detail, name='shipment-detail'),
     
     # Reports endpoints (Download)
     path('reports/warehouse/<int:warehouse_id>/pdf/', warehouse_pdf_report, name='warehouse-pdf-report'),

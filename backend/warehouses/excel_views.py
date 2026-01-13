@@ -169,9 +169,9 @@ def generate_province_statistics_excel(request):
             'warehouses_count': ProvinceWarehouse.objects.filter(province=province.name).count(),
             'schools_count': School.objects.filter(province__name=province.name).count(),
             'drivers_count': User.objects.filter(role='province_driver', province=province.name).count(),
-            'incoming_shipments': Shipment.objects.filter(to_province__province=province.name).count(),
-            'distributed_shipments': Shipment.objects.filter(
-                to_province__province=province.name,
+            'incoming_shipments': MinistryToProvinceShipment.objects.filter(to_warehouse__province=province.name).count(),
+            'distributed_shipments': ProvinceToSchoolShipment.objects.filter(
+                from_province__province=province.name,
                 status='delivered'
             ).count(),
             'current_stock': WarehouseStock.objects.filter(

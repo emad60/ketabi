@@ -50,7 +50,7 @@ class WarehouseStockAdmin(admin.ModelAdmin):
     term_display.short_description = 'الترم'
     
     def is_low_stock_display(self, obj):
-        return "⚠️ منخفض" if obj.is_low_stock() else "✅ جيد"
+        return "⚠️ منخفض" if obj.is_low_stock else "✅ جيد"
     is_low_stock_display.short_description = 'حالة المخزون'
 
 

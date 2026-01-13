@@ -9,7 +9,7 @@ from .models import WarehouseStock
 def handle_low_stock_alert(sender, instance, created, **kwargs):
     from .tasks import check_low_stock
     
-    if not created and instance.is_low_stock():
+    if not created and instance.is_low_stock:
         transaction.on_commit(
             lambda: check_low_stock.delay(instance.id)
         )

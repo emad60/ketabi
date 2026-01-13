@@ -381,11 +381,19 @@ def ministry_dashboard_stats(request):
         )
         pending_requests = province_book_requests.filter(status='pending').count()
         
-        # حساب الشحنات النشطة للمحافظة
-        active_shipments = Shipment.objects.filter(
+        # حساب الشحنات النشطة للمحافظة (من الوزارة للمحافظة)
+        active_ministry_to_province = MinistryToProvinceShipment.objects.filter(
             to_province__province=province.name,
             status__in=['pending', 'assigned', 'out_for_delivery']
         ).count()
+        
+        # حساب شحنات المحافظة للمدارس
+        active_province_to_school = ProvinceToSchoolShipment.objects.filter(
+            from_province__province=province.name,
+            status__in=['pending', 'assigned', 'out_for_delivery']
+        ).count()
+        
+        active_shipments = active_ministry_to_province + active_province_to_school
         
         province_stats.append({
             'id': province.id,
@@ -1665,38 +1673,67 @@ def create_shipment_from_school_request(request):
                 delivery_notes=notes,
             )
             
-            # خصم المخزون من مستودع المحافظة - Temporarily disabled
-            # TODO: Update InventoryService to work with new shipment models
-            pass  # Placeholder while inventory service is being updated
+            # خصم المخزون من مستودع المحافظة
+            import logging
+            logger = logging.getLogger(__name__)
             
-            # try:
-            #     from .inventory_service import InventoryService
-            #     deduction_result = InventoryService.deduct_inventory_for_shipment(shipment)
-            #     
-            #     if not deduction_result['success']:
-            #         # إذا فشل الخصم، نحذف الشحنة ونرجع خطأ
-            #         shipment.delete()
-            #         return Response({
-            #             'error': 'فشل خصم المخزون',
-            #             'details': deduction_result['message'],
-            #             'errors': deduction_result['errors']
-            #         }, status=status.HTTP_400_BAD_REQUEST)
-            #     
-            #     import logging
-            #     logger = logging.getLogger(__name__)
-            #     logger.info(
-            #         f"[INVENTORY] تم خصم المخزون للشحنة #{shipment.id}: "
-            #         f"{len(deduction_result['deducted_items'])} كتاب"
-            #     )
-            # except Exception as e:
-            #     import logging
-            #     logger = logging.getLogger(__name__)
-            #     logger.exception(f'[INVENTORY] خطأ في خصم المخزون: {e}')
-            #     shipment.delete()
-            #     return Response({
-            #         'error': 'خطأ في خصم المخزون',
-            #         'details': str(e)
-            #     }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            for book_item in books_data:
+                try:
+                    # جلب المخزون للكتاب في مستودع المحافظة
+                    stock = WarehouseStock.objects.select_for_update().get(
+                        province_warehouse=province_warehouse,
+                        book_id=book_item['book_id']
+                    )
+                    
+                    # التحقق من توفر الكمية
+                    if stock.quantity < book_item['quantity']:
+                        raise ValueError(
+                            f"كمية غير كافية من كتاب {book_item['book_title']} "
+                            f"(متوفر: {stock.quantity}, مطلوب: {book_item['quantity']})"
+                        )
+                    
+                    # حفظ الكمية القديمة
+                    previous_quantity = stock.quantity
+                    
+                    # خصم الكمية
+                    stock.quantity -= book_item['quantity']
+                    stock.save()
+                    
+                    # تسجيل حركة المخزون
+                    StockMovement.objects.create(
+                        stock=stock,
+                        movement_type='out',
+                        quantity=book_item['quantity'],
+                        previous_quantity=previous_quantity,
+                        new_quantity=stock.quantity,
+                        reason=f"خصم للشحنة #{shipment.tracking_code} - المدرسة: {school_request.school.name}"
+                    )
+                    
+                    logger.info(
+                        f"[STOCK DEDUCTION] خصم {book_item['quantity']} من كتاب "
+                        f"{book_item['book_title']} - المخزون الجديد: {stock.quantity}"
+                    )
+                    
+                except WarehouseStock.DoesNotExist:
+                    # إذا لم يكن الكتاب موجود في المخزون
+                    shipment.delete()
+                    return Response({
+                        'error': f"الكتاب {book_item['book_title']} غير موجود في المخزون",
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                    
+                except ValueError as ve:
+                    # إذا كانت الكمية غير كافية
+                    shipment.delete()
+                    return Response({
+                        'error': str(ve),
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                    
+                except Exception as e:
+                    logger.exception(f'خطأ في خصم المخزون: {e}')
+                    shipment.delete()
+                    return Response({
+                        'error': f'خطأ في خصم المخزون: {str(e)}',
+                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
             # توليد QR Code للشحنة
             from .qr_generator import generate_shipment_qr_code

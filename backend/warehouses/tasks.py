@@ -122,7 +122,7 @@ def check_low_stock(stock_id: int):
     except WarehouseStock.DoesNotExist:
         return f"سجل المخزون {stock_id} غير موجود"
     
-    if stock.is_low_stock():
+    if stock.is_low_stock:
         warehouse = stock.ministry_warehouse if stock.ministry_warehouse else stock.province_warehouse
         subject = f"⚠️ تنبيه: مخزون منخفض - {warehouse.name}"
         message = f"""

@@ -18,6 +18,8 @@ from warehouses.views import (
     MinistryWarehouseViewSet,
     ProvinceWarehouseViewSet,
     WarehouseStockViewSet,
+    MinistryToProvinceShipmentViewSet,
+    ProvinceToSchoolShipmentViewSet,
 )
 
 from book_requests.views import BookRequestViewSet, ProvinceBookRequestViewSet
@@ -43,6 +45,8 @@ router.register(r'school-requests', SchoolRequestViewSet, basename='school-reque
 router.register(r"warehouses/ministry", MinistryWarehouseViewSet, basename="ministry-warehouse")
 router.register(r"warehouses/province", ProvinceWarehouseViewSet, basename="province-warehouse")
 router.register(r"warehouses/stocks", WarehouseStockViewSet, basename="warehouse-stock")
+router.register(r"warehouses/shipments/ministry-to-province", MinistryToProvinceShipmentViewSet, basename="ministry-to-province-shipment")
+router.register(r"warehouses/shipments/province-to-school", ProvinceToSchoolShipmentViewSet, basename="province-to-school-shipment")
 #router.register(r"warehouses/reports", ReportViewSet, basename="report")
 
 # Book Requests - register specific routes before general routes

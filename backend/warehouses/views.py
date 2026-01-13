@@ -2452,6 +2452,229 @@ class MinistryToProvinceShipmentViewSet(viewsets.ModelViewSet):
             pass
         
         return Response(self.serializer_class(shipment).data)
+    
+    @action(detail=False, methods=['post'], url_path='create-from-request')
+    def create_from_book_request(self, request):
+        """
+        إنشاء شحنة من طلب محافظة معتمد
+        
+        Expected data:
+        {
+            "book_request_id": 123,
+            "courier_id": 456,
+            "notes": "ملاحظات اختيارية"
+        }
+        """
+        user = request.user
+        
+        # التحقق من الصلاحيات - الوزارة فقط
+        if user.role not in ['ministry_admin', 'ministry_staff', 'ministry_warehouse']:
+            return Response(
+                {'error': 'غير مصرح لك بإنشاء شحنات'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # الحصول على البيانات
+        book_request_id = request.data.get('book_request_id')
+        courier_id = request.data.get('courier_id')
+        notes = request.data.get('notes', '')
+        
+        if not book_request_id:
+            return Response(
+                {'error': 'book_request_id مطلوب'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            with transaction.atomic():
+                # جلب طلب المحافظة
+                book_request = BookRequest.objects.select_related(
+                    'created_by'
+                ).prefetch_related('items__book').get(id=book_request_id)
+                
+                # التحقق من حالة الطلب
+                if book_request.status != 'approved':
+                    return Response(
+                        {'error': 'يمكن إنشاء شحنات فقط من الطلبات المعتمدة'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                # جلب المندوب
+                courier = None
+                if courier_id:
+                    try:
+                        courier = User.objects.get(id=courier_id, role='ministry_courier')
+                    except User.DoesNotExist:
+                        return Response(
+                            {'error': 'المندوب غير موجود أو ليس مندوب وزارة'},
+                            status=status.HTTP_404_NOT_FOUND
+                        )
+                
+                # جلب مستودع الوزارة (الافتراضي أو الأول)
+                ministry_warehouse = MinistryWarehouse.objects.first()
+                if not ministry_warehouse:
+                    return Response(
+                        {'error': 'لا يوجد مستودع للوزارة'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                # جلب مستودع المحافظة
+                province_name = book_request.created_by.province
+                province_warehouse = ProvinceWarehouse.objects.filter(
+                    province=province_name
+                ).first()
+                
+                if not province_warehouse:
+                    return Response(
+                        {'error': f'لا يوجد مستودع للمحافظة {province_name}'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                # تحضير بيانات الكتب
+                books_data = []
+                for item in book_request.items.all():
+                    if not item.book:
+                        continue
+                    
+                    # استخدام الكمية المعتمدة أو الكمية المطلوبة
+                    quantity = item.approved_quantity if item.approved_quantity else item.quantity
+                    
+                    books_data.append({
+                        'book_id': item.book.id,
+                        'book_title': item.book.title,
+                        'book_subject': item.book.subject.name if item.book.subject else '',
+                        'book_grade': item.book.grade.name if item.book.grade else '',
+                        'quantity': quantity,
+                        'term': 'first',  # Default
+                    })
+                
+                if not books_data:
+                    return Response(
+                        {'error': 'لا توجد كتب في الطلب'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                # إنشاء الشحنة
+                shipment = MinistryToProvinceShipment.objects.create(
+                    from_ministry=ministry_warehouse,
+                    to_province=province_warehouse,
+                    books=books_data,
+                    assigned_courier=courier,
+                    status='assigned' if courier else 'pending',
+                    delivery_notes=notes,
+                )
+                
+                # خصم المخزون من مستودع الوزارة
+                import logging
+                logger = logging.getLogger(__name__)
+                
+                for book_item in books_data:
+                    try:
+                        stock = WarehouseStock.objects.select_for_update().get(
+                            ministry_warehouse=ministry_warehouse,
+                            book_id=book_item['book_id']
+                        )
+                        
+                        # التحقق من الكمية
+                        if stock.quantity < book_item['quantity']:
+                            raise ValueError(
+                                f"كمية غير كافية من كتاب {book_item['book_title']} "
+                                f"(متوفر: {stock.quantity}, مطلوب: {book_item['quantity']})"
+                            )
+                        
+                        previous_quantity = stock.quantity
+                        stock.quantity -= book_item['quantity']
+                        stock.save()
+                        
+                        # تسجيل حركة المخزون
+                        StockMovement.objects.create(
+                            stock=stock,
+                            movement_type='out',
+                            quantity=book_item['quantity'],
+                            previous_quantity=previous_quantity,
+                            new_quantity=stock.quantity,
+                            reason=f"شحنة #{shipment.tracking_code} للمحافظة: {province_name}"
+                        )
+                        
+                        logger.info(
+                            f"[MINISTRY STOCK] خصم {book_item['quantity']} من "
+                            f"{book_item['book_title']} - المخزون الجديد: {stock.quantity}"
+                        )
+                        
+                    except WarehouseStock.DoesNotExist:
+                        shipment.delete()
+                        return Response({
+                            'error': f"الكتاب {book_item['book_title']} غير موجود في مخزون الوزارة",
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                        
+                    except ValueError as ve:
+                        shipment.delete()
+                        return Response({
+                            'error': str(ve),
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                        
+                    except Exception as e:
+                        logger.exception(f'خطأ في خصم المخزون: {e}')
+                        shipment.delete()
+                        return Response({
+                            'error': f'خطأ في خصم المخزون: {str(e)}',
+                        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                
+                # تحديث حالة الطلب
+                book_request.status = 'fulfilled'
+                book_request.save()
+                
+                # إرسال إشعار
+                try:
+                    from notifications.notification_service import NotificationService
+                    if courier:
+                        NotificationService.notify_shipment_assigned(shipment)
+                    NotificationService.notify_shipment_created(shipment)
+                except Exception as notif_error:
+                    logger.error(f'Failed to send notification: {notif_error}')
+                
+                logger.info(
+                    f"[MINISTRY SHIPMENT] Shipment #{shipment.id} created from "
+                    f"Book Request #{book_request.id} by {user.username}"
+                )
+                
+                return Response({
+                    'success': True,
+                    'message': 'تم إنشاء الشحنة بنجاح',
+                    'shipment': {
+                        'id': shipment.id,
+                        'tracking_code': shipment.tracking_code,
+                        'status': shipment.status,
+                        'province_name': province_name,
+                        'courier': {
+                            'id': courier.id,
+                            'name': courier.full_name,
+                            'username': courier.username,
+                        } if courier else None,
+                        'books': books_data,
+                        'created_at': shipment.created_at.isoformat(),
+                    },
+                    'book_request': {
+                        'id': book_request.id,
+                        'request_number': book_request.request_number,
+                        'status': book_request.status,
+                    }
+                }, status=status.HTTP_201_CREATED)
+                
+        except BookRequest.DoesNotExist:
+            return Response(
+                {'error': 'طلب المحافظة غير موجود'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.exception(f'Error creating ministry shipment: {e}')
+            return Response(
+                {'error': f'حدث خطأ أثناء إنشاء الشحنة: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 class ProvinceToSchoolShipmentViewSet(viewsets.ModelViewSet):

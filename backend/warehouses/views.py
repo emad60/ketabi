@@ -372,6 +372,32 @@ def ministry_dashboard_stats(request):
     completed_last_30_days = (recent_ministry_shipments.filter(status='confirmed').count() + 
                              recent_school_shipments.filter(status='confirmed').count())
     
+    # حساب إجمالي الكتب الموزعة من الشحنات المكتملة
+    total_books_distributed = 0
+    completed_ministry = ministry_shipments.filter(status__in=['delivered', 'confirmed'])
+    completed_school = school_shipments.filter(status__in=['delivered', 'confirmed'])
+    
+    for shipment in completed_ministry:
+        if shipment.books:
+            for book_item in shipment.books:
+                total_books_distributed += book_item.get('quantity', 0)
+    
+    for shipment in completed_school:
+        if shipment.books:
+            for book_item in shipment.books:
+                total_books_distributed += book_item.get('quantity', 0)
+    
+    # حساب معدل إكمال الشحنات
+    completion_rate = 0
+    if total_shipments > 0:
+        completion_rate = round((delivered_shipments / total_shipments) * 100, 1)
+    
+    # إحصائيات المستخدمين
+    total_users = User.objects.count()
+    active_users_last_week = User.objects.filter(
+        last_login__gte=timezone.now() - timedelta(days=7)
+    ).count()
+    
     # إحصائيات المحافظات الفردية
     provinces = Province.objects.all()
     province_stats = []
@@ -410,10 +436,13 @@ def ministry_dashboard_stats(request):
         'active_requests': province_requests_by_status['pending'],
         'pending_shipments': pending_shipments,
         'delivered_shipments': delivered_shipments,
-        'total_books_distributed': delivered_shipments * 100,  # تقدير
+        'total_books_distributed': total_books_distributed,
         'warehouse_stock': total_books_in_stock,
         'active_couriers': active_couriers,
         'province_stats': province_stats,
+        'completion_rate': completion_rate,
+        'total_users': total_users,
+        'active_users': active_users_last_week,
         
         # بيانات تفصيلية إضافية
         'warehouses': {
@@ -458,7 +487,7 @@ def province_dashboard_stats(request):
     user = request.user
     
     # فلترة بناءً على صلاحيات المستخدم
-    if user.role in ['province_staff', 'province_warehouse', 'province_driver']:
+    if user.role in ['province_admin', 'province_staff', 'province_warehouse', 'province_driver']:
         # Get province warehouses for this user's province
         if not user.province:
             return Response({
@@ -527,6 +556,21 @@ def province_dashboard_stats(request):
     total_school_requests = school_requests.count()
     pending_school_requests = school_requests.filter(status='pending').count()
     approved_school_requests = school_requests.filter(status='approved').count()
+    fulfilled_school_requests = school_requests.filter(status='fulfilled').count()
+    
+    # حساب إجمالي الكتب الموزعة للمدارس
+    total_books_distributed = 0
+    completed_outgoing = outgoing_shipments.filter(status__in=['delivered', 'confirmed'])
+    for shipment in completed_outgoing:
+        if shipment.books:
+            for book_item in shipment.books:
+                total_books_distributed += book_item.get('quantity', 0)
+    
+    # حساب معدل إكمال الشحنات الصادرة
+    outgoing_completion_rate = 0
+    if total_outgoing > 0:
+        completed_outgoing_count = outgoing_shipments.filter(status__in=['delivered', 'confirmed']).count()
+        outgoing_completion_rate = round((completed_outgoing_count / total_outgoing) * 100, 1)
     
     # آخر طلبات المدارس
     recent_school_requests = school_requests.order_by('-created_at')[:5]
@@ -545,10 +589,12 @@ def province_dashboard_stats(request):
         'total_schools': total_schools,
         'pending_school_requests': pending_school_requests,
         'approved_school_requests': approved_school_requests,
+        'fulfilled_school_requests': fulfilled_school_requests,
         'incoming_shipments': total_incoming,
         'outgoing_shipments': total_outgoing,
         'current_inventory': total_books,
         'total_books': total_books,
+        'total_books_distributed': total_books_distributed,
         'low_stock_items': low_stock_count,
         'active_couriers': active_couriers,
         'active_drivers': active_couriers,
@@ -557,6 +603,7 @@ def province_dashboard_stats(request):
         'active_shipments': total_incoming + total_outgoing,
         'delivered_shipments': incoming_shipments.filter(status='delivered').count(),
         'warehouse_stock': total_books,
+        'completion_rate': outgoing_completion_rate,
         'school_requests': school_requests_list,
         'school_stats': school_requests_list,
         'recent_activity': school_requests_list,

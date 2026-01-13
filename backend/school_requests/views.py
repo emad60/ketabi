@@ -20,7 +20,7 @@ class SchoolRequestViewSet(viewsets.ModelViewSet):
         # فلترة حسب صلاحيات المستخدم
         if user.role in ['province_staff', 'province_warehouse']:
             # موظف المحافظة يرى طلبات مدارس محافظته فقط
-            queryset = queryset.filter(school__province=user.province)
+            queryset = queryset.filter(school__province__name=user.province)
         elif user.role.startswith('school'):
             # موظف المدرسة يرى طلبات مدرسته فقط
             # هنا تحتاج إضافة حقل school للمستخدم إذا كان موظف مدرسة

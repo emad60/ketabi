@@ -38,6 +38,13 @@ from .views import (
     get_shipments_list,
 )
 
+# Import mobile views
+from .mobile_views import (
+    driver_active_shipments,
+    driver_shipments_history,
+    school_receive_delivery,
+)
+
 # Import new mobile views
 from .mobile_views import (
     # Driver APIs

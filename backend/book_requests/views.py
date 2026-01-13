@@ -24,12 +24,10 @@ class ProvinceBookRequestViewSet(viewsets.ModelViewSet):
         # Get base queryset
         base_qs = BookRequest.objects.select_related(
             'created_by', 'reviewed_by'
-        ).prefetch_related('items').order_by('-created_at')
+        ).prefetch_related('items__book').order_by('-created_at')
         
-        # Filter out requests that already have shipments (optional via query param)
-        exclude_shipped = self.request.query_params.get('exclude_shipped', 'false').lower() == 'true'
-        if exclude_shipped:
-            base_qs = base_qs.filter(shipments_from_request__isnull=True)
+        # Note: exclude_shipped filter removed since relationship doesn't exist
+        # If needed in future, add related_name to MinistryToProvinceShipment.request field
         
         # Admin can see everything
         if user.role == 'admin':

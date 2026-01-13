@@ -2,6 +2,9 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
+    # ViewSets
+    MinistryToProvinceShipmentViewSet,
+    ProvinceToSchoolShipmentViewSet,
     # Statistics
     ministry_dashboard_stats,
     province_dashboard_stats,
@@ -31,6 +34,8 @@ from .views import (
     create_shipment_from_school_request,
     # School Incoming Shipments
     get_school_incoming_shipments,
+    # Unified Shipments List
+    get_shipments_list,
 )
 
 # Import new mobile views
@@ -38,22 +43,10 @@ from .mobile_views import (
     # Driver APIs
     driver_active_shipments,
     driver_shipments_history,
-    driver_update_location,
-    driver_scan_qr,
-    driver_upload_photo,
-    driver_upload_signature,
-    driver_start_delivery,
-    driver_complete_delivery,
-    driver_performance_stats,
-    # Province APIs
-    province_receive_shipment,
     # School APIs
-    school_incoming_deliveries,
     school_receive_delivery,
-    school_scan_qr_receive,
-    # Unified QR Scan API
-    unified_qr_scan,
 )
+
 
 # Import report upload views
 from .report_upload_views import (
@@ -74,6 +67,8 @@ from .excel_views import (
 
 # Router for ViewSets
 router = DefaultRouter()
+router.register(r'ministry-shipments', MinistryToProvinceShipmentViewSet, basename='ministry-shipment')
+router.register(r'province-shipments', ProvinceToSchoolShipmentViewSet, basename='province-shipment')
 router.register(r'uploaded-reports', UploadedReportViewSet, basename='uploaded-report')
 router.register(r'excel-reports', ExcelReportViewSet, basename='excel-report')
 
@@ -87,6 +82,9 @@ urlpatterns = [
     path('stats/warehouse/<int:warehouse_id>/', warehouse_stats, name='warehouse-stats'),
     path('stats/driver/', driver_stats, name='driver-stats-current'),
     path('stats/driver/<int:driver_id>/', driver_stats, name='driver-stats'),
+    
+    # Unified Shipments List (متوافق مع Frontend)
+    path('shipments/', get_shipments_list, name='shipments-list'),
     
     # Reports endpoints (Download)
     path('reports/warehouse/<int:warehouse_id>/pdf/', warehouse_pdf_report, name='warehouse-pdf-report'),
@@ -107,37 +105,38 @@ urlpatterns = [
     path('qr/scan/', scan_qr_code, name='scan-qr-code'),
     path('qr/verify/', verify_qr_code, name='verify-qr-code'),
     
-    # Unified QR Scan API (New - recommended)
-    path('mobile/unified-scan/', unified_qr_scan, name='unified-qr-scan'),
+    # Unified QR Scan API (New - recommended) - TEMPORARILY DISABLED
+    # path('mobile/unified-scan/', unified_qr_scan, name='unified-qr-scan'),
+    
+    # ===== NEW Mobile APIs (v2) - TEMPORARILY DISABLED =====
+    # These will be re-enabled after updating to work with new shipment models
+    # # Driver APIs
+    # path('mobile/driver/shipments/active/', driver_active_shipments, name='driver-active-shipments'),
+    # path('mobile/driver/shipments/history/', driver_shipments_history, name='driver-shipments-history'),
+    # path('mobile/driver/shipments/<int:shipment_id>/location/', driver_update_location, name='driver-update-location'),
+    # path('mobile/driver/shipments/<int:shipment_id>/scan-qr/', driver_scan_qr, name='driver-scan-qr'),
+    # path('mobile/driver/shipments/<int:shipment_id>/upload-photo/', driver_upload_photo, name='driver-upload-photo'),
+    # path('mobile/driver/shipments/<int:shipment_id>/upload-signature/', driver_upload_signature, name='driver-upload-signature'),
+    # path('mobile/driver/shipments/<int:shipment_id>/start/', driver_start_delivery, name='driver-start-delivery'),
+    # path('mobile/driver/shipments/<int:shipment_id>/complete/', driver_complete_delivery, name='driver-complete-delivery'),
+    # path('mobile/driver/performance/', driver_performance_stats, name='driver-performance'),
+    
+    # # Province Staff APIs
+    # path('mobile/province/shipments/<int:shipment_id>/receive/', province_receive_shipment, name='province-receive-shipment'),
+    
+    # # School Staff APIs
+    # path('mobile/school/deliveries/incoming/', school_incoming_deliveries, name='school-incoming-deliveries'),
+    # path('mobile/school/deliveries/<int:shipment_id>/receive/', school_receive_delivery, name='school-receive-delivery'),
+    # path('mobile/school/deliveries/<int:shipment_id>/scan-qr/', school_scan_qr_receive, name='school-scan-qr'),
+    
     
     # ===== NEW Mobile APIs (v2) =====
     # Driver APIs
     path('mobile/driver/shipments/active/', driver_active_shipments, name='driver-active-shipments'),
     path('mobile/driver/shipments/history/', driver_shipments_history, name='driver-shipments-history'),
-    path('mobile/driver/shipments/<int:shipment_id>/location/', driver_update_location, name='driver-update-location'),
-    path('mobile/driver/shipments/<int:shipment_id>/scan-qr/', driver_scan_qr, name='driver-scan-qr'),
-    path('mobile/driver/shipments/<int:shipment_id>/upload-photo/', driver_upload_photo, name='driver-upload-photo'),
-    path('mobile/driver/shipments/<int:shipment_id>/upload-signature/', driver_upload_signature, name='driver-upload-signature'),
-    path('mobile/driver/shipments/<int:shipment_id>/start/', driver_start_delivery, name='driver-start-delivery'),
-    path('mobile/driver/shipments/<int:shipment_id>/complete/', driver_complete_delivery, name='driver-complete-delivery'),
-    path('mobile/driver/performance/', driver_performance_stats, name='driver-performance'),
-    
-    # Province Staff APIs
-    path('mobile/province/shipments/<int:shipment_id>/receive/', province_receive_shipment, name='province-receive-shipment'),
     
     # School Staff APIs
-    path('mobile/school/deliveries/incoming/', school_incoming_deliveries, name='school-incoming-deliveries'),
     path('mobile/school/deliveries/<int:shipment_id>/receive/', school_receive_delivery, name='school-receive-delivery'),
-    path('mobile/school/deliveries/<int:shipment_id>/scan-qr/', school_scan_qr_receive, name='school-scan-qr'),
-    
-    # ===== OLD Mobile APIs (deprecated, keep for compatibility) =====
-    path('mobile/shipments/active/', my_active_shipments, name='my-active-shipments'),
-    path('mobile/shipments/<int:shipment_id>/location/', update_driver_location, name='update-location'),
-    path('mobile/shipments/<int:shipment_id>/start/', start_delivery, name='start-delivery'),
-    path('mobile/shipments/<int:shipment_id>/proof/', upload_proof_photo, name='upload-proof'),
-    path('mobile/shipments/<int:shipment_id>/signature/', upload_digital_signature, name='upload-signature'),
-    path('mobile/shipments/<int:shipment_id>/confirm/', confirm_delivery, name='confirm-delivery'),
-    path('mobile/qr/scan/', scan_qr_and_verify, name='scan-qr'),
     
     # ===== Province Shipment Creation from School Requests =====
     path('province/school-requests/approved/', get_approved_school_requests, name='approved-school-requests'),

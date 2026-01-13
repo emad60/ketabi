@@ -16,8 +16,7 @@ from django.views.decorators.http import require_http_methods
 import base64
 import json
 
-from .models import Shipment, MinistryWarehouse, ProvinceWarehouse
-from .serializers import ShipmentSerializer
+from .models import MinistryWarehouse, ProvinceWarehouse, MinistryToProvinceShipment, ProvinceToSchoolShipment
 from users.models import User
 
 
@@ -41,20 +40,65 @@ def driver_active_shipments(request):
             status=status.HTTP_403_FORBIDDEN
         )
     
-    # Get active shipments
-    shipments = Shipment.objects.filter(
-        assigned_courier=user,
-        status__in=['assigned', 'out_for_delivery']
-    ).select_related(
-        'from_ministry',
-        'to_province',
-        'assigned_courier'
-    ).order_by('-created_at')
+    # Get active shipments based on driver role
+    shipments_data = []
     
-    serializer = ShipmentSerializer(shipments, many=True)
+    if user.role == 'ministry_driver':
+        # Ministry driver: get MinistryToProvinceShipment
+        ministry_shipments = MinistryToProvinceShipment.objects.filter(
+            assigned_courier=user,
+            status__in=['assigned', 'out_for_delivery']
+        ).select_related(
+            'from_ministry',
+            'to_province',
+            'assigned_courier'
+        ).order_by('-created_at')
+        
+        for shipment in ministry_shipments:
+            shipments_data.append({
+                'id': shipment.id,
+                'tracking_code': shipment.tracking_code,
+                'type': 'ministry_to_province',
+                'status': shipment.status,
+                'from': 'وزارة التربية والتعليم',
+                'to': shipment.to_province.province if shipment.to_province else 'غير محدد',
+                'books': shipment.books,
+                'books_count': len(shipment.books or []),
+                'created_at': shipment.created_at.isoformat(),
+                'qr_token': shipment.qr_token,
+                'qr_expires_at': shipment.qr_expires_at.isoformat() if shipment.qr_expires_at else None,
+            })
+    
+    elif user.role == 'province_driver':
+        # Province driver: get ProvinceToSchoolShipment
+        province_shipments = ProvinceToSchoolShipment.objects.filter(
+            assigned_courier=user,
+            status__in=['assigned', 'out_for_delivery']
+        ).select_related(
+            'to_school',
+            'assigned_courier'
+        ).prefetch_related('from_province').order_by('-created_at')
+        
+        for shipment in province_shipments:
+            from_name = shipment.from_province.province if shipment.from_province else 'غير محدد'
+            
+            shipments_data.append({
+                'id': shipment.id,
+                'tracking_code': shipment.tracking_code,
+                'type': 'province_to_school',
+                'status': shipment.status,
+                'from': from_name,
+                'to': shipment.to_school.name if shipment.to_school else 'غير محدد',
+                'books': shipment.books,
+                'books_count': len(shipment.books or []),
+                'created_at': shipment.created_at.isoformat(),
+                'qr_token': shipment.qr_token,
+                'qr_expires_at': shipment.qr_expires_at.isoformat() if shipment.qr_expires_at else None,
+            })
+    
     return Response({
-        'count': shipments.count(),
-        'results': serializer.data
+        'count': len(shipments_data),
+        'results': shipments_data
     })
 
 
@@ -72,20 +116,60 @@ def driver_shipments_history(request):
             status=status.HTTP_403_FORBIDDEN
         )
     
-    # Get completed shipments
-    shipments = Shipment.objects.filter(
-        assigned_courier=user,
-        status__in=['delivered', 'confirmed', 'canceled']
-    ).select_related(
-        'from_ministry',
-        'to_province',
-        'assigned_courier'
-    ).order_by('-delivered_at', '-created_at')[:50]  # Last 50 shipments
+    shipments_data = []
     
-    serializer = ShipmentSerializer(shipments, many=True)
+    if user.role == 'ministry_driver':
+        # Ministry driver shipments
+        ministry_shipments = MinistryToProvinceShipment.objects.filter(
+            assigned_courier=user,
+            status__in=['delivered', 'confirmed', 'canceled']
+        ).select_related(
+            'from_ministry',
+            'to_province',
+            'assigned_courier'
+        ).order_by('-delivered_at', '-created_at')[:50]
+        
+        for shipment in ministry_shipments:
+            shipments_data.append({
+                'id': shipment.id,
+                'tracking_code': shipment.tracking_code,
+                'type': 'ministry_to_province',
+                'status': shipment.status,
+                'from': 'وزارة التربية والتعليم',
+                'to': shipment.to_province.province.name if shipment.to_province and shipment.to_province.province else 'غير محدد',
+                'books_count': len(shipment.books or []),
+                'created_at': shipment.created_at.isoformat(),
+                'delivered_at': shipment.delivered_at.isoformat() if shipment.delivered_at else None,
+            })
+    
+    elif user.role == 'province_driver':
+        # Province driver shipments
+        province_shipments = ProvinceToSchoolShipment.objects.filter(
+            assigned_courier=user,
+            status__in=['delivered', 'confirmed', 'canceled']
+        ).select_related(
+            'to_school',
+            'assigned_courier'
+        ).prefetch_related('from_province').order_by('-delivered_at', '-created_at')[:50]
+        
+        for shipment in province_shipments:
+            from_name = shipment.from_province.province if shipment.from_province else 'غير محدد'
+            
+            shipments_data.append({
+                'id': shipment.id,
+                'tracking_code': shipment.tracking_code,
+                'type': 'province_to_school',
+                'status': shipment.status,
+                'from': from_name,
+                'to': shipment.to_school.name if shipment.to_school else 'غير محدد',
+                'books_count': len(shipment.books or []),
+                'created_at': shipment.created_at.isoformat(),
+                'delivered_at': shipment.delivered_at.isoformat() if shipment.delivered_at else None,
+            })
+    
     return Response({
-        'count': shipments.count(),
-        'results': serializer.data
+        'count': len(shipments_data),
+        'results': shipments_data
     })
 
 
@@ -511,11 +595,11 @@ def school_receive_delivery(request, shipment_id):
         )
     
     try:
-        shipment = Shipment.objects.get(
+        shipment = ProvinceToSchoolShipment.objects.get(
             id=shipment_id,
-            to_school_name=user.school.name
+            to_school=user.school
         )
-    except Shipment.DoesNotExist:
+    except ProvinceToSchoolShipment.DoesNotExist:
         return Response(
             {'error': 'Shipment not found or not for your school'},
             status=status.HTTP_404_NOT_FOUND
@@ -538,14 +622,20 @@ def school_receive_delivery(request, shipment_id):
     shipment.status = 'confirmed'
     shipment.confirmed_at = timezone.now()
     shipment.confirmed_by = user
-    shipment.receiver_name = receiver_name
-    shipment.receiver_notes = request.data.get('notes', '')
+    shipment.recipient_name = receiver_name
+    shipment.delivery_notes = request.data.get('notes', '')
     shipment.delivery_condition = request.data.get('condition', 'good')
     shipment.save()
     
     return Response({
+        'success': True,
         'message': 'Delivery confirmed successfully',
-        'shipment': ShipmentSerializer(shipment).data
+        'shipment': {
+            'id': shipment.id,
+            'tracking_code': shipment.tracking_code,
+            'status': shipment.status,
+            'confirmed_at': shipment.confirmed_at.isoformat(),
+        }
     })
 
 

@@ -2199,6 +2199,11 @@ def create_ministry_to_province_shipment(request, data):
     """
     user = request.user
     
+    # Logging for debugging
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"Creating ministry shipment. Data received: {data}")
+    
     # التحقق من الصلاحيات
     if user.role not in ['ministry_admin', 'ministry_staff', 'admin']:
         return Response({
@@ -2250,10 +2255,12 @@ def create_ministry_to_province_shipment(request, data):
                 'error': 'يجب تحديد المحافظة المستهدفة'
             }, status=status.HTTP_400_BAD_REQUEST)
         
+        # التحقق من وجود الكتب (بعد محاولة استخراجها من book_request)
         if not books_data or len(books_data) == 0:
             return Response({
                 'success': False,
-                'error': 'يجب تحديد الكتب المراد شحنها'
+                'error': 'يجب تحديد الكتب المراد شحنها. يمكنك:\n1- إرسال book_request_id لإنشاء شحنة من طلب موافق عليه\n2- إرسال books مباشرة مع book و quantity لكل كتاب',
+                'hint': 'لإنشاء شحنة من طلب موافق عليه، أرسل book_request_id بدلاً من books'
             }, status=status.HTTP_400_BAD_REQUEST)
         
         # إذا لم يحدد المخزن، استخدم المخزن الرئيسي للوزارة

@@ -2158,14 +2158,23 @@ def get_school_incoming_shipments(request):
 def create_shipment_unified(request):
     """
     إنشاء شحنة جديدة - يتعرف على النوع تلقائياً من البيانات
-    يدعم نوعين:
-    1. Ministry to Province: إذا كان from_ministry موجود
-    2. Province to School: إذا كان from_province موجود
+    يدعم ثلاثة أنواع:
+    1. Ministry to Province from BookRequest: إذا كان book_request_id موجود
+    2. Ministry to Province: إذا كان from_ministry موجود
+    3. Province to School: إذا كان from_province موجود
     """
     data = request.data
     user = request.user
     
-    # التحقق من نوع الشحنة
+    # الأولوية: إذا كان هناك book_request_id، إنشاء من طلب محافظة معتمد
+    if data.get('book_request_id'):
+        # استخدام endpoint الموجود create_from_book_request
+        viewset = MinistryToProvinceShipmentViewSet()
+        viewset.request = request
+        viewset.format_kwarg = None
+        return viewset.create_from_book_request(request)
+    
+    # التحقق من نوع الشحنة العادي
     if data.get('from_ministry'):
         # Ministry to Province Shipment
         return create_ministry_to_province_shipment(request, data)
@@ -2175,13 +2184,18 @@ def create_shipment_unified(request):
     else:
         return Response({
             'success': False,
-            'error': 'يجب تحديد مصدر الشحنة (from_ministry أو from_province)'
+            'error': 'يجب تحديد مصدر الشحنة (from_ministry، from_province، أو book_request_id)'
         }, status=status.HTTP_400_BAD_REQUEST)
 
 
 def create_ministry_to_province_shipment(request, data):
     """
     إنشاء شحنة من الوزارة إلى المحافظة
+    يدعم:
+    1. إنشاء عادي مع تحديد الكتب يدوياً (books)
+    2. إنشاء من طلب محافظة (book_request_id) - يستخرج الكتب تلقائياً
+    3. اختيار المخزن المصدر (from_ministry_warehouse_id)
+    4. إرسال إشعارات للجهة المستلمة
     """
     user = request.user
     
@@ -2193,17 +2207,47 @@ def create_ministry_to_province_shipment(request, data):
         }, status=status.HTTP_403_FORBIDDEN)
     
     try:
-        # Get ministry warehouse
-        ministry_warehouse_id = data.get('from_ministry')
+        # Get parameters
+        ministry_warehouse_id = data.get('from_ministry') or data.get('from_ministry_warehouse_id')
         to_province_id = data.get('to_province')
         assigned_courier_id = data.get('assigned_courier')
+        book_request_id = data.get('book_request_id')
         books_data = data.get('books', [])
         notes = data.get('notes', '')
         
-        if not ministry_warehouse_id or not to_province_id:
+        # إذا كان هناك book_request_id، استخرج الكتب من الطلب
+        book_request = None
+        if book_request_id:
+            try:
+                book_request = BookRequest.objects.get(id=book_request_id, status='approved')
+                
+                # استخراج الكتب من items
+                books_data = []
+                for item in book_request.items.all():
+                    if item.book_id:  # فقط إذا كان الكتاب موجود في قاعدة البيانات
+                        quantity = item.approved_quantity or item.quantity
+                        books_data.append({
+                            'book': item.book_id,
+                            'quantity': quantity
+                        })
+                
+                if not books_data:
+                    return Response({
+                        'success': False,
+                        'error': 'الطلب لا يحتوي على كتب صالحة للشحن'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                    
+            except BookRequest.DoesNotExist:
+                return Response({
+                    'success': False,
+                    'error': 'الطلب غير موجود أو غير موافق عليه'
+                }, status=status.HTTP_404_NOT_FOUND)
+        
+        
+        if not to_province_id:
             return Response({
                 'success': False,
-                'error': 'يجب تحديد مخزن الوزارة والمحافظة المستهدفة'
+                'error': 'يجب تحديد المحافظة المستهدفة'
             }, status=status.HTTP_400_BAD_REQUEST)
         
         if not books_data or len(books_data) == 0:
@@ -2212,8 +2256,18 @@ def create_ministry_to_province_shipment(request, data):
                 'error': 'يجب تحديد الكتب المراد شحنها'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Get objects
-        ministry_warehouse = MinistryWarehouse.objects.get(id=ministry_warehouse_id)
+        # إذا لم يحدد المخزن، استخدم المخزن الرئيسي للوزارة
+        if not ministry_warehouse_id:
+            ministry_warehouse = MinistryWarehouse.objects.filter(name__icontains='رئيسي').first()
+            if not ministry_warehouse:
+                ministry_warehouse = MinistryWarehouse.objects.first()
+            if not ministry_warehouse:
+                return Response({
+                    'success': False,
+                    'error': 'لا يوجد مخزن للوزارة'
+                }, status=status.HTTP_404_NOT_FOUND)
+        else:
+            ministry_warehouse = MinistryWarehouse.objects.get(id=ministry_warehouse_id)
         
         # Get province warehouse for the target province
         # If to_province_id is a province ID, get its warehouse
@@ -2269,8 +2323,14 @@ def create_ministry_to_province_shipment(request, data):
             to_province=province_warehouse,
             assigned_courier=courier,
             books=books_data,
-            delivery_notes=notes
+            delivery_notes=notes,
+            related_request=book_request
         )
+        
+        # تحديث حالة الطلب إذا كان موجوداً
+        if book_request:
+            book_request.status = 'fulfilled'
+            book_request.save()
         
         # Deduct stock and create movements
         for book_item in books_data:
@@ -2297,8 +2357,48 @@ def create_ministry_to_province_shipment(request, data):
                 quantity=-quantity,
                 previous_quantity=prev_qty,
                 new_quantity=stock.quantity,
-                reason=f'شحنة #{shipment.tracking_code} للمحافظة: {province_warehouse.province}'
+                reason=f'شحنة #{shipment.tracking_code} للمحافظة: {province_warehouse.province}',
+                created_by=user
             )
+        
+        # إرسال إشعارات لموظفي المحافظة المستلمة
+        try:
+            from notifications.models import Notification
+            
+            # إشعار لموظفي المحافظة المستلمة
+            province_users = User.objects.filter(
+                province=province_warehouse.province,
+                role__in=['province_admin', 'province_warehouse', 'province_staff']
+            )
+            
+            total_books_count = sum(book.get('quantity', 0) for book in books_data)
+            message = f'تم إنشاء شحنة جديدة #{shipment.tracking_code} من الوزارة إلى محافظة {province_warehouse.province}. تحتوي على {total_books_count} كتاب من {len(books_data)} صنف.'
+            
+            for province_user in province_users:
+                Notification.objects.create(
+                    user=province_user,
+                    title='شحنة جديدة من الوزارة',
+                    message=message,
+                    notification_type='shipment',
+                    related_object_type='ministry_to_province_shipment',
+                    related_object_id=shipment.id
+                )
+            
+            # إشعار للمندوب إذا تم تعيينه
+            if courier:
+                Notification.objects.create(
+                    user=courier,
+                    title='تم تعيينك لشحنة جديدة',
+                    message=f'تم تعيينك لتوصيل شحنة #{shipment.tracking_code} إلى محافظة {province_warehouse.province}',
+                    notification_type='shipment',
+                    related_object_type='ministry_to_province_shipment',
+                    related_object_id=shipment.id
+                )
+        except Exception as e:
+            # لا نريد أن يفشل الإنشاء بسبب خطأ في الإشعارات
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f'Error sending notifications: {e}')
         
         # Return response
         return Response({
@@ -2850,8 +2950,9 @@ class MinistryToProvinceShipmentViewSet(viewsets.ModelViewSet):
         Expected data:
         {
             "book_request_id": 123,
-            "courier_id": 456,
-            "notes": "ملاحظات اختيارية"
+            "courier_id": 456 (optional),
+            "notes": "ملاحظات اختيارية",
+            "from_ministry": 1 (optional - ministry warehouse ID)
         }
         """
         user = request.user
@@ -2867,6 +2968,7 @@ class MinistryToProvinceShipmentViewSet(viewsets.ModelViewSet):
         book_request_id = request.data.get('book_request_id')
         courier_id = request.data.get('courier_id')
         notes = request.data.get('notes', '')
+        ministry_warehouse_id = request.data.get('from_ministry')  # خيار جديد
         
         if not book_request_id:
             return Response(
@@ -2899,13 +3001,24 @@ class MinistryToProvinceShipmentViewSet(viewsets.ModelViewSet):
                             status=status.HTTP_404_NOT_FOUND
                         )
                 
-                # جلب مستودع الوزارة (الافتراضي أو الأول)
-                ministry_warehouse = MinistryWarehouse.objects.first()
-                if not ministry_warehouse:
-                    return Response(
-                        {'error': 'لا يوجد مستودع للوزارة'},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
+                # جلب مستودع الوزارة
+                if ministry_warehouse_id:
+                    # استخدام المخزن المحدد
+                    try:
+                        ministry_warehouse = MinistryWarehouse.objects.get(id=ministry_warehouse_id)
+                    except MinistryWarehouse.DoesNotExist:
+                        return Response(
+                            {'error': f'مخزن الوزارة برقم {ministry_warehouse_id} غير موجود'},
+                            status=status.HTTP_404_NOT_FOUND
+                        )
+                else:
+                    # استخدام المخزن الافتراضي (الأول)
+                    ministry_warehouse = MinistryWarehouse.objects.first()
+                    if not ministry_warehouse:
+                        return Response(
+                            {'error': 'لا يوجد مستودع للوزارة'},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
                 
                 # جلب مستودع المحافظة
                 province_name = book_request.created_by.province

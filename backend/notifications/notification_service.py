@@ -225,42 +225,70 @@ class NotificationService:
     def notify_shipment_created(shipment):
         """إشعار الجهة المستقبلة بشحنة جديدة"""
         from users.models import User
+        from warehouses.models import MinistryToProvinceShipment, ProvinceToSchoolShipment
         
         # إذا كانت الشحنة من الوزارة للمحافظة
-        if shipment.courier_role == 'ministry_courier' and shipment.to_province:
+        if isinstance(shipment, MinistryToProvinceShipment):
             # إرسال لموظفي المحافظة المستهدفة
-            province_users = User.objects.filter(
-                Q(role__in=['province_admin', 'province_staff', 'province_warehouse']) &
-                Q(province=shipment.to_province.province) &
-                Q(is_active=True)
-            )
+            province_name = shipment.to_province.province if shipment.to_province else None
             
-            NotificationService.send_notification(
-                users=list(province_users),
-                notification_type='shipment_created',
-                title='📦 شحنة واردة من الوزارة',
-                message=f'شحنة جديدة #{shipment.tracking_code or shipment.id} - {len(shipment.books or [])} كتاب',
-                metadata={
-                    'books_count': len(shipment.books or []),
-                    'from': 'ministry',
-                },
-                related_object_type='shipment',
-                related_object_id=shipment.id
-            )
+            if province_name:
+                province_users = User.objects.filter(
+                    Q(role__in=['province_admin', 'province_staff', 'province_warehouse']) &
+                    Q(province=province_name) &
+                    Q(is_active=True)
+                )
+                
+                books_count = len(shipment.books) if shipment.books else 0
+                total_quantity = sum(book.get('quantity', 0) for book in (shipment.books or []))
+                
+                NotificationService.send_notification(
+                    users=list(province_users),
+                    notification_type='ministry_shipment_created',
+                    title='📦 شحنة واردة من الوزارة',
+                    message=f'شحنة جديدة #{shipment.tracking_code} - {books_count} عنوان ({total_quantity} نسخة)',
+                    metadata={
+                        'shipment_id': shipment.id,
+                        'tracking_code': shipment.tracking_code,
+                        'books_count': books_count,
+                        'total_quantity': total_quantity,
+                        'from_warehouse': shipment.from_ministry.name if shipment.from_ministry else '',
+                        'status': shipment.status,
+                    },
+                    related_object_type='ministry_shipment',
+                    related_object_id=shipment.id
+                )
         
         # إذا كانت الشحنة من المحافظة للمدرسة
-        elif shipment.courier_role == 'province_courier' and shipment.to_school_name:
-            # إرسال للمدرسة إذا كان لها admin
-            if shipment.related_school_request and shipment.related_school_request.school.admin:
+        elif isinstance(shipment, ProvinceToSchoolShipment):
+            # إرسال للمدرسة المستهدفة
+            school = shipment.to_school
+            
+            if school:
+                # إرسال لموظفي المدرسة
+                school_users = User.objects.filter(
+                    Q(role='school_staff') &
+                    Q(school=school) &
+                    Q(is_active=True)
+                )
+                
+                books_count = len(shipment.books) if shipment.books else 0
+                total_quantity = sum(book.get('quantity', 0) for book in (shipment.books or []))
+                
                 NotificationService.send_notification(
-                    users=[shipment.related_school_request.school.admin],
-                    notification_type='shipment_created',
-                    title='📦 شحنة قادمة',
-                    message=f'تم إنشاء شحنة لمدرستك #{shipment.tracking_code or shipment.id}',
+                    users=list(school_users),
+                    notification_type='province_shipment_created',
+                    title='📦 شحنة قادمة من المحافظة',
+                    message=f'شحنة جديدة #{shipment.tracking_code} - {books_count} عنوان ({total_quantity} نسخة)',
                     metadata={
-                        'books_count': len(shipment.books or []),
+                        'shipment_id': shipment.id,
+                        'tracking_code': shipment.tracking_code,
+                        'books_count': books_count,
+                        'total_quantity': total_quantity,
+                        'from_warehouse': shipment.from_province.province if shipment.from_province else '',
+                        'status': shipment.status,
                     },
-                    related_object_type='shipment',
+                    related_object_type='province_shipment',
                     related_object_id=shipment.id
                 )
     

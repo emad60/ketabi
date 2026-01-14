@@ -108,3 +108,65 @@ class BookRequestViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         """تعيين created_by تلقائياً عند إنشاء طلب جديد"""
         serializer.save(created_by=self.request.user)
+    
+    @action(detail=True, methods=['get'])
+    def with_books(self, request, pk=None):
+        """
+        جلب تفاصيل الطلب مع قائمة الكتب الكاملة
+        يُستخدم عند إنشاء شحنة من طلب موافق عليه
+        
+        Returns:
+        {
+            "request": {...},
+            "books": [
+                {
+                    "id": 182,
+                    "title": "الكيمياء - أول ثانوي",
+                    "subject": "الكيمياء",
+                    "grade": "أول ثانوي",
+                    "quantity": 236,
+                    "approved_quantity": 236
+                }
+            ]
+        }
+        """
+        try:
+            book_request = self.get_object()
+            
+            # Get books details
+            books_list = []
+            for item in book_request.items.all():
+                book_data = {
+                    'item_id': item.id,
+                    'subject': item.subject,
+                    'grade': item.grade,
+                    'quantity': item.quantity,
+                    'approved_quantity': item.approved_quantity or item.quantity,
+                }
+                
+                if item.book:
+                    book_data.update({
+                        'book_id': item.book.id,
+                        'title': item.book.title,
+                        'isbn': item.book.isbn,
+                        'term': item.book.term,
+                    })
+                else:
+                    book_data.update({
+                        'book_id': None,
+                        'title': f'{item.subject} - {item.grade}',
+                    })
+                
+                books_list.append(book_data)
+            
+            return Response({
+                'request': BookRequestSerializer(book_request).data,
+                'books': books_list,
+                'total_items': len(books_list),
+                'total_quantity': sum(b['approved_quantity'] for b in books_list),
+            })
+            
+        except Exception as e:
+            return Response({
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

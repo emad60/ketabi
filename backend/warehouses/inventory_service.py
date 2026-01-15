@@ -3,9 +3,8 @@
 تتعامل مع خصم الكميات من المخازن عند إنشاء الشحنات
 """
 import logging
-from typing import List, Dict, Any, Union
+from typing import Dict, Any, Union, Optional
 from django.db import transaction
-from django.utils import timezone
 
 from .models import WarehouseStock, StockMovement, MinistryToProvinceShipment, ProvinceToSchoolShipment
 
@@ -75,23 +74,27 @@ class InventoryService:
             with transaction.atomic():
                 # معالجة كل كتاب في قائمة الشحنة
                 for book_item in shipment.books:
-                    book_id = int(book_item.get('book_id'))
-                    quantity = int(book_item.get('quantity'))
-                    term = book_item.get('term')
+                    book_id = InventoryService._get_book_id(book_item)
+                    quantity = InventoryService._get_quantity(book_item)
+                    term_id = InventoryService._get_term_id(book_item, book_id)
                     
+                    if not book_id or quantity <= 0:
+                        errors.append('book_id/quantity missing')
+                        continue
+
                     # البحث عن المخزون المناسب
                     try:
                         if warehouse_type == 'ministry':
                             stock = WarehouseStock.objects.select_for_update().get(
                                 ministry_warehouse=source_warehouse,
                                 book_id=book_id,
-                                term=term
+                                term=term_id,
                             )
                         else:
                             stock = WarehouseStock.objects.select_for_update().get(
                                 province_warehouse=source_warehouse,
                                 book_id=book_id,
-                                term=term
+                                term=term_id,
                             )
                         
                         # التحقق من توفر الكمية
@@ -113,7 +116,6 @@ class InventoryService:
                             quantity=-quantity,
                             previous_quantity=previous_quantity,
                             new_quantity=stock.quantity,
-                            shipment=shipment,
                             reason=f'خصم للشحنة #{shipment.id} - {shipment.tracking_code}',
                             created_by=None  # النظام قام بالعملية
                         )
@@ -121,19 +123,19 @@ class InventoryService:
                         deducted_items.append({
                             'book_id': book_id,
                             'book_name': str(stock.book),
-                            'term': term,
+                            'term': term_id,
                             'quantity_deducted': quantity,
                             'previous_stock': previous_quantity,
                             'new_stock': stock.quantity
                         })
                         
                         logger.info(
-                            f'[INVENTORY] خصم {quantity} من {stock.book} ({term}) - '
+                            f'[INVENTORY] خصم {quantity} من {stock.book} ({term_id}) - '
                             f'الكمية السابقة: {previous_quantity} -> الجديدة: {stock.quantity}'
                         )
                     
                     except WarehouseStock.DoesNotExist:
-                        error_msg = f'الكتاب {book_id} ({term}) غير موجود في المخزون'
+                        error_msg = f'الكتاب {book_id} ({term_id}) غير موجود في المخزون'
                         logger.error(f'[INVENTORY] {error_msg} - Shipment #{shipment.id}')
                         errors.append(error_msg)
                         continue
@@ -215,29 +217,29 @@ class InventoryService:
         insufficient_items = []
         
         for book_item in books:
-            book_id = int(book_item.get('book_id'))
-            quantity = int(book_item.get('quantity'))
-            term = book_item.get('term')
+            book_id = InventoryService._get_book_id(book_item)
+            quantity = InventoryService._get_quantity(book_item)
+            term_id = InventoryService._get_term_id(book_item, book_id)
             
             try:
                 if warehouse_type == 'ministry':
                     stock = WarehouseStock.objects.get(
                         ministry_warehouse=source_warehouse,
                         book_id=book_id,
-                        term=term
+                        term=term_id
                     )
                 else:
                     stock = WarehouseStock.objects.get(
                         province_warehouse=source_warehouse,
                         book_id=book_id,
-                        term=term
+                        term=term_id
                     )
                 
                 available = stock.quantity >= quantity
                 items_status.append({
                     'book_id': book_id,
                     'book_name': str(stock.book),
-                    'term': term,
+                    'term': term_id,
                     'requested_quantity': quantity,
                     'available_quantity': stock.quantity,
                     'sufficient': available
@@ -245,18 +247,18 @@ class InventoryService:
                 
                 if not available:
                     insufficient_items.append(
-                        f'{stock.book} ({term}): متوفر {stock.quantity} / مطلوب {quantity}'
+                        f'{stock.book} ({term_id}): متوفر {stock.quantity} / مطلوب {quantity}'
                     )
             
             except WarehouseStock.DoesNotExist:
                 items_status.append({
                     'book_id': book_id,
-                    'term': term,
+                    'term': term_id,
                     'requested_quantity': quantity,
                     'available_quantity': 0,
                     'sufficient': False
                 })
-                insufficient_items.append(f'الكتاب {book_id} ({term}) غير موجود في المخزون')
+                insufficient_items.append(f'الكتاب {book_id} ({term_id}) غير موجود في المخزون')
         
         return {
             'available': len(insufficient_items) == 0,
@@ -297,16 +299,16 @@ class InventoryService:
         try:
             with transaction.atomic():
                 for book_item in shipment.books:
-                    book_id = int(book_item.get('book_id'))
-                    quantity = int(book_item.get('quantity'))
-                    term = book_item.get('term')
+                    book_id = InventoryService._get_book_id(book_item)
+                    quantity = InventoryService._get_quantity(book_item)
+                    term_id = InventoryService._get_term_id(book_item, book_id)
                     
                     try:
                         # البحث عن المخزون أو إنشاؤه
                         stock, created = WarehouseStock.objects.select_for_update().get_or_create(
                             province_warehouse=shipment.to_province,
                             book_id=book_id,
-                            term=term,
+                            term=term_id,
                             defaults={'quantity': 0}
                         )
                         
@@ -316,24 +318,24 @@ class InventoryService:
                         
                         # تسجيل الحركة
                         StockMovement.objects.create(
-                            warehouse_stock=stock,
+                            stock=stock,
                             movement_type='in',
                             quantity=quantity,
+                            previous_quantity=stock.quantity - quantity,
+                            new_quantity=stock.quantity,
                             reason=f'استلام من شحنة الوزارة #{shipment.tracking_code}',
-                            reference_type='ministry_shipment',
-                            reference_id=shipment.id,
-                            performed_by=shipment.confirmed_by if hasattr(shipment, 'confirmed_by') else None
+                            created_by=getattr(shipment, 'confirmed_by', None)
                         )
                         
                         added_items.append({
                             'book_id': book_id,
                             'book_name': str(stock.book),
-                            'term': term,
+                            'term': term_id,
                             'quantity': quantity,
                             'new_stock': stock.quantity
                         })
                         
-                        logger.info(f'[INVENTORY] Added {quantity} of book #{book_id} ({term}) to {shipment.to_province} from ministry shipment #{shipment.id}')
+                        logger.info(f'[INVENTORY] Added {quantity} of book #{book_id} ({term_id}) to {shipment.to_province} from ministry shipment #{shipment.id}')
                         
                     except Exception as e:
                         error_msg = f'خطأ في إضافة الكتاب {book_id}: {str(e)}'
@@ -392,15 +394,15 @@ class InventoryService:
         try:
             with transaction.atomic():
                 for book_item in shipment.books:
-                    book_id = int(book_item.get('book_id'))
-                    quantity = int(book_item.get('quantity'))
-                    term = book_item.get('term')
+                    book_id = InventoryService._get_book_id(book_item)
+                    quantity = InventoryService._get_quantity(book_item)
+                    term_id = InventoryService._get_term_id(book_item, book_id)
                     
                     try:
                         stock = WarehouseStock.objects.select_for_update().get(
                             province_warehouse=shipment.from_province,
                             book_id=book_id,
-                            term=term
+                            term=term_id
                         )
                         
                         # التحقق من توفر الكمية
@@ -416,27 +418,27 @@ class InventoryService:
                         
                         # تسجيل الحركة
                         StockMovement.objects.create(
-                            warehouse_stock=stock,
+                            stock=stock,
                             movement_type='out',
                             quantity=quantity,
+                            previous_quantity=stock.quantity + quantity,
+                            new_quantity=stock.quantity,
                             reason=f'شحنة للمدرسة #{shipment.tracking_code}',
-                            reference_type='school_shipment',
-                            reference_id=shipment.id,
-                            performed_by=shipment.created_by if hasattr(shipment, 'created_by') else None
+                            created_by=getattr(shipment, 'created_by', None)
                         )
                         
                         deducted_items.append({
                             'book_id': book_id,
                             'book_name': str(stock.book),
-                            'term': term,
+                            'term': term_id,
                             'quantity': quantity,
                             'remaining_stock': stock.quantity
                         })
                         
-                        logger.info(f'[INVENTORY] Deducted {quantity} of book #{book_id} ({term}) from {shipment.from_province} for school shipment #{shipment.id}')
+                        logger.info(f'[INVENTORY] Deducted {quantity} of book #{book_id} ({term_id}) from {shipment.from_province} for school shipment #{shipment.id}')
                         
                     except WarehouseStock.DoesNotExist:
-                        error_msg = f'الكتاب {book_id} ({term}) غير موجود في مخزون المحافظة'
+                        error_msg = f'الكتاب {book_id} ({term_id}) غير موجود في مخزون المحافظة'
                         logger.error(f'[INVENTORY] {error_msg}')
                         errors.append(error_msg)
                     except Exception as e:
@@ -462,3 +464,43 @@ class InventoryService:
                 'deducted_items': deducted_items,
                 'errors': errors
             }
+
+    @staticmethod
+    def _get_book_id(item: Dict[str, Any]) -> Optional[int]:
+        book_id = item.get('book_id') or item.get('book')
+        try:
+            return int(book_id) if book_id is not None else None
+        except Exception:
+            return None
+
+    @staticmethod
+    def _get_quantity(item: Dict[str, Any]) -> int:
+        try:
+            return int(item.get('quantity', 0) or 0)
+        except Exception:
+            return 0
+
+    @staticmethod
+    def _get_term_id(item: Dict[str, Any], book_id: Optional[int]) -> Optional[int]:
+        term_val = item.get('term_id') or item.get('term')
+        return InventoryService._normalize_term(term_val)
+
+    @staticmethod
+    def _normalize_term(term_value):
+        """Map term id/number to WarehouseStock.term choices."""
+        if term_value is None:
+            return None
+        if isinstance(term_value, str):
+            lower = term_value.lower()
+            if lower in ['first', 'second']:
+                return lower
+            if lower.isdigit():
+                term_value = int(lower)
+            else:
+                return term_value
+        if isinstance(term_value, int):
+            if term_value == 1:
+                return 'first'
+            if term_value == 2:
+                return 'second'
+        return term_value

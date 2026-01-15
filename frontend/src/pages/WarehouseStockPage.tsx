@@ -70,7 +70,7 @@ export function WarehouseStockPage() {
       const response = await api.get(`/warehouses/stocks/`, {
         params: {
           [`${warehouseType}_warehouse`]: warehouseId,
-          page_size: 100,
+          page_size: 500,
         }
       });
       const data = response.data.results || response.data;

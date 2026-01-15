@@ -1,10 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import bookService from '../services/bookService';
 import { apiService } from '../services/apiService';
 import api from '../services/api';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../components/ui/select';
+
+interface BookOption {
+  id: number;
+  title: string;
+  grade_id?: number;
+  subject_id?: number;
+  term_id?: number;
+  grade_level?: string;
+  subject?: string;
+}
 
 // نموذج إنشاء طلب كتب من المحافظة للوزارة
 export default function ProvinceCreateBookRequestPage() {
@@ -13,7 +23,7 @@ export default function ProvinceCreateBookRequestPage() {
   const [reason, setReason] = useState('');
   const [notes, setNotes] = useState('');
   const [books, setBooks] = useState<Array<{book_id: number, book_title: string, quantity: number}>>([]);
-  const [bookOptions, setBookOptions] = useState<Array<{id:number,title:string, grade_level?:string, subject?:string}>>([]);
+  const [bookOptions, setBookOptions] = useState<BookOption[]>([]);
   const [selectedBookId, setSelectedBookId] = useState<number | null>(null);
   const [selectedSubject, setSelectedSubject] = useState<string>('');
   const [selectedGrade, setSelectedGrade] = useState<string>('');
@@ -32,13 +42,60 @@ export default function ProvinceCreateBookRequestPage() {
   // اسم المحافظة (جلبه من بيانات المستخدم إن وُجد)
   const provinceName = user?.province || 'أمانة العاصمة صنعاء';
 
+  // Filter subjects based on selected grade (only show subjects that have books for this grade)
+  const filteredSubjects = useMemo(() => {
+    if (!selectedGrade) return subjects;
+    const gradeId = parseInt(selectedGrade);
+    const subjectIdsForGrade = new Set(
+      bookOptions
+        .filter(b => b.grade_id === gradeId)
+        .map(b => b.subject_id)
+        .filter(Boolean)
+    );
+    return subjects.filter(s => subjectIdsForGrade.has(s.id));
+  }, [selectedGrade, bookOptions, subjects]);
+
+  // Filter terms based on selected grade and subject
+  const filteredTerms = useMemo(() => {
+    if (!selectedGrade || !selectedSubject) return terms;
+    const gradeId = parseInt(selectedGrade);
+    const subjectId = parseInt(selectedSubject);
+    const termIdsForSelection = new Set(
+      bookOptions
+        .filter(b => b.grade_id === gradeId && b.subject_id === subjectId)
+        .map(b => b.term_id)
+        .filter(Boolean)
+    );
+    return terms.filter(t => termIdsForSelection.has(t.id));
+  }, [selectedGrade, selectedSubject, bookOptions, terms]);
+
+  // Reset dependent selections when parent changes
+  useEffect(() => {
+    setSelectedSubject('');
+    setSelectedTerm('');
+  }, [selectedGrade]);
+
+  useEffect(() => {
+    setSelectedTerm('');
+  }, [selectedSubject]);
+
   useEffect(()=>{
     (async ()=>{
       try{
         setLoading(true);
-        // جلب الكتب
+        // جلب الكتب مع معلومات كاملة
         const booksData = await bookService.getBooks();
-        setBookOptions(Array.isArray(booksData) ? booksData.map(b=>({id: b.id, title: b.title, grade_level: b.grade_level, subject: b.subject})) : []);
+        console.log('Books loaded:', booksData.slice(0, 3)); // Debug first 3 books
+        setBookOptions(Array.isArray(booksData) ? booksData.map((b: any)=>({
+          id: b.id, 
+          title: b.title, 
+          grade_level: b.grade_level, 
+          subject: b.subject,
+          // Backend returns 'subject', 'grade', 'term' as FK IDs
+          grade_id: typeof b.grade === 'number' ? b.grade : b.grade_id,
+          subject_id: typeof b.subject === 'number' ? b.subject : b.subject_id,
+          term_id: typeof b.term === 'number' ? b.term : b.term_id
+        })) : []);
         
         // جلب المواد
         const subjectsRes = await api.get('/subjects/');
@@ -166,21 +223,10 @@ export default function ProvinceCreateBookRequestPage() {
           <label style={{fontSize:14, color:'#555', display:'block', marginBottom:8}}>الكتب المطلوبة</label>
           <div style={{display:'flex', gap:8, marginBottom:8}}>
             <div style={{flex:1}}>
-              <label style={{fontSize:13, color:'#555', display:'block', marginBottom:6}}>المادة</label>
-              <Select value={selectedSubject} onValueChange={(val:any)=>setSelectedSubject(val)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="اختر المادة" />
-                </SelectTrigger>
-                <SelectContent>
-                  {subjects.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div style={{flex:1}}>
               <label style={{fontSize:13, color:'#555', display:'block', marginBottom:6}}>الصف</label>
               <Select value={selectedGrade} onValueChange={(val:any)=>setSelectedGrade(val)}>
                 <SelectTrigger>
-                  <SelectValue placeholder="اختر الصف" />
+                  <SelectValue placeholder="اختر الصف أولاً" />
                 </SelectTrigger>
                 <SelectContent>
                   {grades.map(g => <SelectItem key={g.id} value={g.id.toString()}>{g.name}</SelectItem>)}
@@ -188,13 +234,24 @@ export default function ProvinceCreateBookRequestPage() {
               </Select>
             </div>
             <div style={{flex:1}}>
-              <label style={{fontSize:13, color:'#555', display:'block', marginBottom:6}}>الفصل</label>
-              <Select value={selectedTerm} onValueChange={(val:any)=>setSelectedTerm(val)}>
+              <label style={{fontSize:13, color:'#555', display:'block', marginBottom:6}}>المادة</label>
+              <Select value={selectedSubject} onValueChange={(val:any)=>setSelectedSubject(val)} disabled={!selectedGrade}>
                 <SelectTrigger>
-                  <SelectValue placeholder="اختر الفصل" />
+                  <SelectValue placeholder={selectedGrade ? "اختر المادة" : "اختر الصف أولاً"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {terms.map(t => <SelectItem key={t.id} value={t.id.toString()}>{t.name}</SelectItem>)}
+                  {filteredSubjects.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div style={{flex:1}}>
+              <label style={{fontSize:13, color:'#555', display:'block', marginBottom:6}}>الفصل</label>
+              <Select value={selectedTerm} onValueChange={(val:any)=>setSelectedTerm(val)} disabled={!selectedSubject}>
+                <SelectTrigger>
+                  <SelectValue placeholder={selectedSubject ? "اختر الفصل" : "اختر المادة أولاً"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {filteredTerms.map(t => <SelectItem key={t.id} value={t.id.toString()}>{t.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

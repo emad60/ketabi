@@ -88,6 +88,7 @@ class BookRequestItem(models.Model):
     # في حالة عدم وجود الكتاب في قاعدة البيانات
     subject = models.CharField(max_length=100, verbose_name='المادة')
     grade = models.CharField(max_length=50, verbose_name='الصف')
+    term = models.CharField(max_length=50, verbose_name='الفصل', blank=True, default='')
     quantity = models.PositiveIntegerField(verbose_name='الكمية')
     
     # الكمية الموافق عليها (قد تختلف عن المطلوبة)

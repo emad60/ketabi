@@ -35,6 +35,210 @@ from .reports import WarehouseReports, PDFReportGenerator
 from notifications.firebase_service import FirebaseService, notify_shipment_assigned
 from notifications.models import Notification
 
+# Unified status update view (imported in urls)
+def _update_shipment_status_logic(request, shipment_id):
+    """Shared status update logic used by both the standalone endpoint and detail PATCH."""
+    new_status = request.data.get('status')
+    recipient_name = request.data.get('recipient_name')
+    notes = request.data.get('notes')
+    now = timezone.now()
+
+    shipment = None
+    serializer_class = None
+    shipment_type = None
+    try:
+        shipment = MinistryToProvinceShipment.objects.get(id=shipment_id)
+        serializer_class = MinistryToProvinceShipmentSerializer
+        shipment_type = 'ministry_to_province'
+    except MinistryToProvinceShipment.DoesNotExist:
+        try:
+            shipment = ProvinceToSchoolShipment.objects.get(id=shipment_id)
+            serializer_class = ProvinceToSchoolShipmentSerializer
+            shipment_type = 'province_to_school'
+        except ProvinceToSchoolShipment.DoesNotExist:
+            return Response({'error': 'الشحنة غير موجودة'}, status=status.HTTP_404_NOT_FOUND)
+
+    allowed_statuses = ['assigned', 'out_for_delivery', 'delivered', 'confirmed', 'canceled']
+    if new_status and new_status not in allowed_statuses:
+        return Response({'error': 'حالة غير صالحة'}, status=status.HTTP_400_BAD_REQUEST)
+
+    old_status = shipment.status
+
+    if new_status:
+        shipment.status = new_status
+        if new_status == 'out_for_delivery':
+            shipment.started_delivery_at = shipment.started_delivery_at or now
+        if new_status == 'delivered':
+            shipment.delivered_at = now
+        if new_status == 'confirmed':
+            shipment.confirmed_at = shipment.confirmed_at or now
+            shipment.confirmed_by = request.user
+            if shipment_type == 'ministry_to_province':
+                try:
+                    from .inventory_service import InventoryService
+                    InventoryService.add_inventory_from_ministry_shipment(shipment)
+                except Exception:
+                    pass
+        # Restore stock when canceling (if not already canceled or confirmed)
+        if new_status == 'canceled' and old_status not in ['canceled', 'confirmed']:
+            try:
+                _restore_stock_for_shipment(shipment, shipment_type, request.user)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).exception(f'Failed to restore stock on cancel: {e}')
+    if recipient_name:
+        shipment.recipient_name = recipient_name
+    if notes is not None:
+        shipment.delivery_notes = notes
+
+    shipment.save()
+    return Response({
+        'success': True,
+        'shipment_type': shipment_type,
+        'shipment': serializer_class(shipment).data
+    })
+
+
+def _restore_stock_for_shipment(shipment, shipment_type, user=None):
+    """Restore stock to source warehouse when a shipment is canceled."""
+    if not shipment.books:
+        return
+
+    with transaction.atomic():
+        for book_item in shipment.books:
+            book_id = book_item.get('book_id') or book_item.get('book')
+            quantity = int(book_item.get('quantity', 0) or 0)
+            term_code = _normalize_term(book_item.get('term') or book_item.get('term_id'))
+
+            if not book_id or quantity <= 0:
+                continue
+
+            try:
+                if shipment_type == 'ministry_to_province' and shipment.from_ministry:
+                    stock = WarehouseStock.objects.select_for_update().get(
+                        ministry_warehouse=shipment.from_ministry,
+                        book_id=book_id,
+                        term=term_code,
+                    )
+                elif shipment_type == 'province_to_school' and shipment.from_province:
+                    stock = WarehouseStock.objects.select_for_update().get(
+                        province_warehouse=shipment.from_province,
+                        book_id=book_id,
+                        term=term_code,
+                    )
+                else:
+                    continue
+
+                prev_qty = stock.quantity
+                stock.quantity += quantity
+                stock.save()
+
+                StockMovement.objects.create(
+                    stock=stock,
+                    movement_type='in',
+                    quantity=quantity,
+                    previous_quantity=prev_qty,
+                    new_quantity=stock.quantity,
+                    reason=f'إلغاء شحنة #{shipment.tracking_code}',
+                    created_by=user
+                )
+            except WarehouseStock.DoesNotExist:
+                # Stock record doesn't exist - skip restoration for this item
+                pass
+
+
+@api_view(['PATCH', 'POST'])
+@permission_classes([IsAuthenticated])
+def update_shipment_status(request, shipment_id):
+    """تحديث حالة شحنة (وزارة→محافظة أو محافظة→مدرسة) عبر endpoint موحد.
+    Payload: {"status": "assigned|out_for_delivery|delivered|confirmed|canceled", "recipient_name": "...", "notes": "..."}
+    Accepts PATCH/POST for compatibility with existing frontend calls.
+    """
+    return _update_shipment_status_logic(request, shipment_id)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def assign_courier(request, shipment_id):
+    """إسناد مندوب لشحنة موجودة.
+    Payload: {"courier_id": 123}
+    """
+    courier_id = request.data.get('courier_id')
+    if not courier_id:
+        return Response({'error': 'courier_id مطلوب'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        courier = User.objects.get(id=courier_id)
+    except User.DoesNotExist:
+        return Response({'error': 'المندوب غير موجود'}, status=status.HTTP_404_NOT_FOUND)
+
+    shipment = None
+    serializer_class = None
+    shipment_type = None
+    try:
+        shipment = MinistryToProvinceShipment.objects.get(id=shipment_id)
+        serializer_class = MinistryToProvinceShipmentSerializer
+        shipment_type = 'ministry_to_province'
+    except MinistryToProvinceShipment.DoesNotExist:
+        try:
+            shipment = ProvinceToSchoolShipment.objects.get(id=shipment_id)
+            serializer_class = ProvinceToSchoolShipmentSerializer
+            shipment_type = 'province_to_school'
+        except ProvinceToSchoolShipment.DoesNotExist:
+            return Response({'error': 'الشحنة غير موجودة'}, status=status.HTTP_404_NOT_FOUND)
+
+    shipment.assigned_courier = courier
+    if shipment.status == 'pending':
+        shipment.status = 'assigned'
+    shipment.save()
+
+    # إرسال إشعار للمندوب
+    try:
+        notify_shipment_assigned(shipment, courier)
+    except Exception:
+        pass
+
+    return Response({
+        'success': True,
+        'message': 'تم إسناد الشحنة للمندوب بنجاح',
+        'shipment_type': shipment_type,
+        'shipment': serializer_class(shipment).data
+    })
+
+
+def _normalize_term(term_value):
+    """Map term id/number/name to WarehouseStock.term choices ('first' or 'second')."""
+    if term_value is None:
+        return None
+    
+    # Convert to string for processing
+    term_str = str(term_value).strip()
+    lower = term_str.lower()
+    
+    # Handle English terms
+    if lower in ['first', 'second']:
+        return lower
+    
+    # Handle numeric values (string or int)
+    if lower.isdigit():
+        term_value = int(lower)
+    
+    if isinstance(term_value, int):
+        if term_value == 1:
+            return 'first'
+        if term_value == 2:
+            return 'second'
+    
+    # Handle Arabic term names
+    if 'أول' in term_str or 'الأول' in term_str or 'اول' in term_str:
+        return 'first'
+    if 'ثاني' in term_str or 'الثاني' in term_str or 'ثانى' in term_str:
+        return 'second'
+    
+    # Default - try to return as-is but log warning
+    logger.warning(f"Could not normalize term value: {term_value}")
+    return None
+
 
 class MinistryWarehouseViewSet(viewsets.ModelViewSet):
     queryset = MinistryWarehouse.objects.all()
@@ -1750,10 +1954,12 @@ def create_shipment_from_school_request(request):
             
             for book_item in books_data:
                 try:
-                    # جلب المخزون للكتاب في مستودع المحافظة
+                    # جلب المخزون للكتاب في مستودع المحافظة (مع term)
+                    term_code = _normalize_term(book_item.get('term'))
                     stock = WarehouseStock.objects.select_for_update().get(
                         province_warehouse=province_warehouse,
-                        book_id=book_item['book_id']
+                        book_id=book_item['book_id'],
+                        term=term_code,
                     )
                     
                     # التحقق من توفر الكمية
@@ -2256,7 +2462,8 @@ def create_ministry_to_province_shipment(request, data):
                         quantity = item.approved_quantity or item.quantity
                         books_data.append({
                             'book': item.book_id,
-                            'quantity': quantity
+                            'quantity': quantity,
+                            'term': getattr(item.book, 'term_id', None)
                         })
                 
                 if not books_data:
@@ -2278,8 +2485,87 @@ def create_ministry_to_province_shipment(request, data):
                 'error': 'يجب تحديد المحافظة المستهدفة'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # التحقق من وجود الكتب (بعد محاولة استخراجها من book_request)
-        if not books_data or len(books_data) == 0:
+        # تطبيع بيانات الكتب لدعم المفاتيح book/book_id و term/term_id
+        normalized_books = []
+        for item in books_data:
+            book_id = item.get('book') or item.get('book_id')
+            try:
+                quantity = int(item.get('quantity', 0) or 0)
+            except Exception:
+                quantity = 0
+            raw_term = item.get('term') or item.get('term_id')
+
+            if quantity <= 0:
+                continue
+
+            # If no book_id, try to find book by subject/grade/term
+            if not book_id:
+                subject = item.get('subject')
+                grade = item.get('grade')
+                term = item.get('term')
+                
+                if subject and grade:
+                    # Try to find book by subject/grade/term names or IDs
+                    filters = {}
+                    
+                    # Handle subject - could be ID or name
+                    if str(subject).isdigit():
+                        filters['subject_id'] = int(subject)
+                    else:
+                        # Try fuzzy match on subject name
+                        from books.models import Subject
+                        subj_obj = Subject.objects.filter(name__icontains=subject).first()
+                        if subj_obj:
+                            filters['subject_id'] = subj_obj.id
+                    
+                    # Handle grade - could be ID or name
+                    if str(grade).isdigit():
+                        filters['grade_id'] = int(grade)
+                    else:
+                        from books.models import Grade
+                        grade_obj = Grade.objects.filter(name__icontains=grade).first()
+                        if grade_obj:
+                            filters['grade_id'] = grade_obj.id
+                    
+                    # Handle term - could be ID, number, or name
+                    term_code = _normalize_term(term)
+                    if term_code:
+                        from books.models import Term
+                        term_obj = Term.objects.filter(number=(1 if term_code == 'first' else 2)).first()
+                        if term_obj:
+                            filters['term_id'] = term_obj.id
+                    
+                    if filters.get('subject_id') and filters.get('grade_id'):
+                        book = Book.objects.filter(**filters).first()
+                        if book:
+                            book_id = book.id
+                            if not raw_term:
+                                raw_term = book.term_id
+                
+                # Still no book_id? Skip this item
+                if not book_id:
+                    logger.warning(f"Could not find book for item: {item}")
+                    continue
+
+            if raw_term is None:
+                # استنتاج الترم من الكتاب إن لم يُرسل
+                book_obj = Book.objects.get(id=book_id)
+                raw_term = getattr(book_obj, 'term_id', None)
+
+            term_code = _normalize_term(raw_term)
+
+            normalized_books.append({
+                'book_id': book_id,
+                'quantity': quantity,
+                'term_id': term_code,  # احتفظ بنفس المفتاح للتوافق لكن بقيمة منسقة
+                'term': term_code,
+                'title': item.get('title')
+            })
+
+        books_data = normalized_books
+
+        # التحقق من وجود الكتب (بعد التطبيع)
+        if not books_data:
             return Response({
                 'success': False,
                 'error': 'يجب تحديد الكتب المراد شحنها. يمكنك:\n1- إرسال book_request_id لإنشاء شحنة من طلب موافق عليه\n2- إرسال books مباشرة مع book و quantity لكل كتاب',
@@ -2329,76 +2615,74 @@ def create_ministry_to_province_shipment(request, data):
                     'error': 'السائق غير موجود'
                 }, status=status.HTTP_404_NOT_FOUND)
         
-        # Check stock availability
-        for book_item in books_data:
-            book_id = book_item.get('book')
-            quantity = book_item.get('quantity', 0)
-            
-            if not book_id or quantity <= 0:
-                continue
-            
-            try:
-                stock = WarehouseStock.objects.get(
-                    ministry_warehouse=ministry_warehouse,
-                    book_id=book_id
-                )
+        with transaction.atomic():
+            # Check stock availability
+            for book_item in books_data:
+                book_id = book_item['book_id']
+                quantity = book_item['quantity']
+                term_code = _normalize_term(book_item.get('term') or book_item.get('term_id'))
                 
-                if stock.quantity < quantity:
+                try:
+                    stock = WarehouseStock.objects.select_for_update().get(
+                        ministry_warehouse=ministry_warehouse,
+                        book_id=book_id,
+                        term=term_code,
+                    )
+                    
+                    if stock.quantity < quantity:
+                        book = Book.objects.get(id=book_id)
+                        return Response({
+                            'success': False,
+                            'error': f'الكمية المتاحة من كتاب "{book.title}" غير كافية. المتاح: {stock.quantity}'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                except WarehouseStock.DoesNotExist:
                     book = Book.objects.get(id=book_id)
                     return Response({
                         'success': False,
-                        'error': f'الكمية المتاحة من كتاب "{book.title}" غير كافية. المتاح: {stock.quantity}'
+                        'error': f'كتاب "{book.title}" غير متوفر في المخزن'
                     }, status=status.HTTP_400_BAD_REQUEST)
-            except WarehouseStock.DoesNotExist:
-                book = Book.objects.get(id=book_id)
-                return Response({
-                    'success': False,
-                    'error': f'كتاب "{book.title}" غير متوفر في المخزن'
-                }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Create shipment
-        shipment = MinistryToProvinceShipment.objects.create(
-            from_ministry=ministry_warehouse,
-            to_province=province_warehouse,
-            assigned_courier=courier,
-            books=books_data,
-            delivery_notes=notes,
-            related_request=book_request
-        )
-        
-        # تحديث حالة الطلب إذا كان موجوداً
-        if book_request:
-            book_request.status = 'fulfilled'
-            book_request.save()
-        
-        # Deduct stock and create movements
-        for book_item in books_data:
-            book_id = book_item.get('book')
-            quantity = book_item.get('quantity', 0)
             
-            if not book_id or quantity <= 0:
-                continue
-            
-            # Deduct from ministry warehouse
-            stock = WarehouseStock.objects.get(
-                ministry_warehouse=ministry_warehouse,
-                book_id=book_id
+            # Create shipment
+            shipment = MinistryToProvinceShipment.objects.create(
+                from_ministry=ministry_warehouse,
+                to_province=province_warehouse,
+                assigned_courier=courier,
+                books=books_data,
+                delivery_notes=notes,
+                related_request=book_request
             )
             
-            prev_qty = stock.quantity
-            stock.quantity -= quantity
-            stock.save()
+            # تحديث حالة الطلب إذا كان موجوداً
+            if book_request:
+                book_request.status = 'fulfilled'
+                book_request.save()
             
-            # Create stock movement
-            StockMovement.objects.create(
-                stock=stock,
-                movement_type='out',
-                quantity=-quantity,
-                previous_quantity=prev_qty,
-                new_quantity=stock.quantity,
-                reason=f'شحنة #{shipment.tracking_code} للمحافظة: {province_warehouse.province}',
-                created_by=user
-            )
+            # Deduct stock and create movements
+            for book_item in books_data:
+                book_id = book_item['book_id']
+                quantity = book_item['quantity']
+                term_code = _normalize_term(book_item.get('term') or book_item.get('term_id'))
+                
+                stock = WarehouseStock.objects.select_for_update().get(
+                    ministry_warehouse=ministry_warehouse,
+                    book_id=book_id,
+                    term=term_code,
+                )
+                
+                prev_qty = stock.quantity
+                stock.quantity = max(0, stock.quantity - quantity)
+                stock.save()
+                
+                # Create stock movement
+                StockMovement.objects.create(
+                    stock=stock,
+                    movement_type='out',
+                    quantity=-quantity,
+                    previous_quantity=prev_qty,
+                    new_quantity=stock.quantity,
+                    reason=f'شحنة #{shipment.tracking_code} للمحافظة: {province_warehouse.province}',
+                    created_by=user
+                )
         
         # إرسال إشعارات لموظفي المحافظة المستلمة
         try:
@@ -2786,7 +3070,7 @@ def get_shipments_list(request):
     })
 
 
-@api_view(['GET'])
+@api_view(['GET', 'PATCH', 'POST'])
 @permission_classes([IsAuthenticated])
 def get_shipment_detail(request, shipment_id):
     """
@@ -2794,6 +3078,11 @@ def get_shipment_detail(request, shipment_id):
     """
     user = request.user
     
+    # If this is a status update call, delegate to the unified updater
+    if request.method in ['PATCH', 'POST'] and request.data.get('status'):
+        # Call shared logic directly to avoid re-parsing body
+        return _update_shipment_status_logic(request, shipment_id)
+
     # Try Province to School first
     try:
         shipment = ProvinceToSchoolShipment.objects.select_related(
@@ -2971,46 +3260,12 @@ class MinistryToProvinceShipmentViewSet(viewsets.ModelViewSet):
     ordering = ["-created_at"]
     
     def perform_create(self, serializer):
-        """إنشاء شحنة جديدة مع خصم المخزون من الوزارة"""
-        shipment = serializer.save()
-        
-        # خصم المخزون من مخزون الوزارة
-        try:
-            from .inventory_service import InventoryService
-            from .models import WarehouseStock, StockMovement
-            
-            if not shipment.books or not shipment.from_ministry:
-                return
-            
-            with transaction.atomic():
-                for book_item in shipment.books:
-                    book_id = int(book_item.get('book_id'))
-                    quantity = int(book_item.get('quantity'))
-                    term = book_item.get('term')
-                    
-                    stock = WarehouseStock.objects.select_for_update().get(
-                        ministry_warehouse=shipment.from_ministry,
-                        book_id=book_id,
-                        term=term
-                    )
-                    
-                    if stock.quantity >= quantity:
-                        stock.quantity -= quantity
-                        stock.save()
-                        
-                        StockMovement.objects.create(
-                            warehouse_stock=stock,
-                            movement_type='out',
-                            quantity=quantity,
-                            reason=f'شحنة للمحافظة #{shipment.tracking_code}',
-                            reference_type='ministry_shipment',
-                            reference_id=shipment.id,
-                            performed_by=self.request.user
-                        )
-        except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.exception(f'Exception while deducting ministry inventory: {e}')
+        """إنشاء شحنة جديدة.
+        Note: Stock deduction is handled in create_ministry_to_province_shipment() which is the
+        primary endpoint for creating ministry shipments. This ViewSet is mainly for listing/detail.
+        If used directly via ViewSet, stock is NOT deducted here to avoid duplication.
+        """
+        serializer.save()
     
     def get_queryset(self):
         user = self.request.user
@@ -3221,9 +3476,11 @@ class MinistryToProvinceShipmentViewSet(viewsets.ModelViewSet):
                 
                 for book_item in books_data:
                     try:
+                        term_code = _normalize_term(book_item.get('term'))
                         stock = WarehouseStock.objects.select_for_update().get(
                             ministry_warehouse=ministry_warehouse,
-                            book_id=book_item['book_id']
+                            book_id=book_item['book_id'],
+                            term=term_code,
                         )
                         
                         # التحقق من الكمية
@@ -3341,21 +3598,12 @@ class ProvinceToSchoolShipmentViewSet(viewsets.ModelViewSet):
     ordering = ["-created_at"]
     
     def perform_create(self, serializer):
-        """إنشاء شحنة جديدة مع خصم المخزون"""
-        shipment = serializer.save()
-        
-        # خصم المخزون من مخزون المحافظة
-        try:
-            from .inventory_service import InventoryService
-            result = InventoryService.deduct_inventory_for_school_shipment(shipment)
-            if not result['success']:
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.error(f'Failed to deduct inventory for school shipment #{shipment.id}: {result["message"]}')
-        except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.exception(f'Exception while deducting inventory: {e}')
+        """إنشاء شحنة جديدة.
+        Note: Stock deduction is handled in create_shipment_from_school_request() which is the
+        primary endpoint for creating province shipments. This ViewSet is mainly for listing/detail.
+        If used directly via ViewSet, stock is NOT deducted here to avoid duplication.
+        """
+        serializer.save()
     
     def get_queryset(self):
         user = self.request.user

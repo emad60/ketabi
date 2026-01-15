@@ -35,6 +35,7 @@ SUBJECT_NAME_TO_CODE = {
 class BookRequestItemSerializer(serializers.ModelSerializer):
     """Serializer لعنصر في الطلب"""
     book_title = serializers.SerializerMethodField()
+    book_term = serializers.SerializerMethodField()
     
     class Meta:
         model = BookRequestItem
@@ -42,8 +43,10 @@ class BookRequestItemSerializer(serializers.ModelSerializer):
             'id',
             'book',
             'book_title',
+            'book_term',
             'subject',
             'grade',
+            'term',
             'quantity',
             'approved_quantity',
             'created_at'
@@ -52,8 +55,21 @@ class BookRequestItemSerializer(serializers.ModelSerializer):
     
     def get_book_title(self, obj):
         if obj.book:
-            return obj.book.title
+            # Return title without term to avoid duplication
+            # Format: "المادة - الصف" (term is in book_term field)
+            subject = obj.book.subject.name if obj.book.subject else ''
+            grade = obj.book.grade.name if obj.book.grade else ''
+            return f"{subject} - {grade}" if subject and grade else obj.book.title
         return f"{obj.subject} - {obj.grade}"
+    
+    def get_book_term(self, obj):
+        """Get the term display from the associated book"""
+        if obj.book and hasattr(obj.book, 'term') and obj.book.term:
+            return obj.book.term.name if hasattr(obj.book.term, 'name') else str(obj.book.term)
+        # Fallback to item's own term field
+        if obj.term:
+            return obj.term
+        return ''
 
 
 class BookRequestSerializer(serializers.ModelSerializer):
@@ -131,39 +147,94 @@ class BookRequestSerializer(serializers.ModelSerializer):
         return obj.items.count()
     
     def create(self, validated_data):
+        from books.models import Subject, Grade, Term
+        
         items_data = validated_data.pop('items', [])
         request = BookRequest.objects.create(**validated_data)
         
         for item_data in items_data:
+            # Debug: Log what we received
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"Processing item_data: {item_data}")
+            
             # Try to find matching book
             book = None
+            term_name = ''
+            subject_name = ''
+            grade_name = ''
+            subject_id_int = None
+            grade_id_int = None
+            term_id_int = None
+            
             if 'book' in item_data and item_data['book']:
                 book = item_data['book']
+                # Get term name from book
+                if book.term:
+                    term_name = book.term.name if hasattr(book.term, 'name') else str(book.term)
             else:
                 # Try to find book by subject_id and grade_id
                 subject_id = item_data.get('subject')
                 grade_id = item_data.get('grade')
                 term_id = item_data.get('term')
                 
-                if subject_id and grade_id:
+                # Resolve names from IDs (handle string IDs)
+                if subject_id:
                     try:
-                        # Use filter().first() instead of get() to avoid MultipleObjectsReturned
+                        subject_id_int = int(subject_id)
+                        subject_obj = Subject.objects.get(id=subject_id_int)
+                        subject_name = subject_obj.name
+                    except (Subject.DoesNotExist, ValueError, TypeError):
+                        subject_name = str(subject_id)
+                        subject_id_int = None
+                
+                if grade_id:
+                    try:
+                        grade_id_int = int(grade_id)
+                        grade_obj = Grade.objects.get(id=grade_id_int)
+                        grade_name = grade_obj.name
+                    except (Grade.DoesNotExist, ValueError, TypeError):
+                        grade_name = str(grade_id)
+                        grade_id_int = None
+                
+                if term_id:
+                    try:
+                        term_id_int = int(term_id)
+                        term_obj = Term.objects.get(id=term_id_int)
+                        term_name = term_obj.name
+                    except (Term.DoesNotExist, ValueError, TypeError):
+                        term_name = str(term_id)
+                        term_id_int = None
+                
+                # Try to find book using integer IDs
+                if subject_id_int and grade_id_int:
+                    try:
                         filters = {
-                            'subject_id': subject_id,
-                            'grade_id': grade_id,
+                            'subject_id': subject_id_int,
+                            'grade_id': grade_id_int,
                         }
-                        if term_id:
-                            filters['term_id'] = term_id
+                        if term_id_int:
+                            filters['term_id'] = term_id_int
                         
+                        logger.info(f"Looking for book with filters: {filters}")
                         book = Book.objects.filter(**filters).first()
-                    except (Book.DoesNotExist, ValueError, TypeError):
+                        logger.info(f"Found book: {book.id if book else None} - {book.title if book else 'None'}")
+                    except Exception as e:
+                        logger.error(f"Error finding book: {e}")
                         pass
             
-            BookRequestItem.objects.create(
-                request=request,
-                book=book,
-                **item_data
-            )
+            # Prepare item data with resolved names
+            create_data = {
+                'request': request,
+                'book': book,
+                'quantity': item_data.get('quantity', 0),
+                'approved_quantity': item_data.get('approved_quantity'),
+                'subject': subject_name or item_data.get('subject', ''),
+                'grade': grade_name or item_data.get('grade', ''),
+                'term': term_name or item_data.get('term', ''),
+            }
+            
+            BookRequestItem.objects.create(**create_data)
         
         return request
     

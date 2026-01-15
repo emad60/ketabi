@@ -3,6 +3,8 @@ warehouses/mobile_views.py
 Mobile-specific APIs for Driver and School Staff
 """
 
+from datetime import timedelta
+
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes, parser_classes
 from rest_framework.response import Response
@@ -17,7 +19,67 @@ import base64
 import json
 
 from .models import MinistryWarehouse, ProvinceWarehouse, MinistryToProvinceShipment, ProvinceToSchoolShipment
+from .serializers import MinistryToProvinceShipmentSerializer, ProvinceToSchoolShipmentSerializer
+from .qr_generator import verify_shipment_qr_code, invalidate_shipment_qr_code
 from users.models import User
+
+
+# Helper utilities
+def _extract_qr_token(raw_code):
+    """Support both raw token and embedded SHIPMENT:{token}:{id} text."""
+    if not raw_code or not isinstance(raw_code, str):
+        return raw_code
+    if raw_code.startswith('SHIPMENT:'):
+        parts = raw_code.split(':')
+        if len(parts) >= 3:
+            return parts[1]
+    return raw_code
+
+
+def _get_driver_shipment(user, shipment_id):
+    """Fetch shipment bound to the driver, respecting the split models."""
+    if user.role in ['ministry_driver', 'ministry_courier']:
+        qs = MinistryToProvinceShipment.objects.select_related('from_ministry', 'to_province', 'assigned_courier')
+        return qs.get(id=shipment_id, assigned_courier=user), 'ministry_to_province', MinistryToProvinceShipmentSerializer
+    if user.role in ['province_driver', 'province_courier']:
+        qs = ProvinceToSchoolShipment.objects.select_related('from_province', 'to_school', 'assigned_courier')
+        return qs.get(id=shipment_id, assigned_courier=user), 'province_to_school', ProvinceToSchoolShipmentSerializer
+    raise PermissionError('User is not a driver')
+
+
+def _get_shipment_by_qr_token(token):
+    """Locate shipment (any type) by qr_token."""
+    if not token:
+        return None, None, None
+    try:
+        shipment = MinistryToProvinceShipment.objects.select_related('from_ministry', 'to_province', 'assigned_courier').get(qr_token=token)
+        return shipment, 'ministry_to_province', MinistryToProvinceShipmentSerializer
+    except MinistryToProvinceShipment.DoesNotExist:
+        try:
+            shipment = ProvinceToSchoolShipment.objects.select_related('from_province', 'to_school', 'assigned_courier').get(qr_token=token)
+            return shipment, 'province_to_school', ProvinceToSchoolShipmentSerializer
+        except ProvinceToSchoolShipment.DoesNotExist:
+            return None, None, None
+
+
+def _normalize_term(term_value):
+    """Map term id/number to WarehouseStock.term string choices."""
+    if term_value is None:
+        return None
+    if isinstance(term_value, str):
+        lower = term_value.lower()
+        if lower in ['first', 'second']:
+            return lower
+        if lower.isdigit():
+            term_value = int(lower)
+        else:
+            return term_value
+    if isinstance(term_value, int):
+        if term_value == 1:
+            return 'first'
+        if term_value == 2:
+            return 'second'
+    return term_value
 
 
 # ============================================================================
@@ -34,7 +96,7 @@ def driver_active_shipments(request):
     user = request.user
     
     # Check if user is a driver
-    if user.role not in ['ministry_driver', 'province_driver']:
+    if user.role not in ['ministry_driver', 'province_driver', 'ministry_courier', 'province_courier']:
         return Response(
             {'error': 'Only drivers can access this endpoint'},
             status=status.HTTP_403_FORBIDDEN
@@ -43,7 +105,7 @@ def driver_active_shipments(request):
     # Get active shipments based on driver role
     shipments_data = []
     
-    if user.role == 'ministry_driver':
+    if user.role in ['ministry_driver', 'ministry_courier']:
         # Ministry driver: get MinistryToProvinceShipment
         ministry_shipments = MinistryToProvinceShipment.objects.filter(
             assigned_courier=user,
@@ -69,7 +131,7 @@ def driver_active_shipments(request):
                 'qr_expires_at': shipment.qr_expires_at.isoformat() if shipment.qr_expires_at else None,
             })
     
-    elif user.role == 'province_driver':
+    elif user.role in ['province_driver', 'province_courier']:
         # Province driver: get ProvinceToSchoolShipment
         province_shipments = ProvinceToSchoolShipment.objects.filter(
             assigned_courier=user,
@@ -110,7 +172,7 @@ def driver_shipments_history(request):
     """
     user = request.user
     
-    if user.role not in ['ministry_driver', 'province_driver']:
+    if user.role not in ['ministry_driver', 'province_driver', 'ministry_courier', 'province_courier']:
         return Response(
             {'error': 'Only drivers can access this endpoint'},
             status=status.HTTP_403_FORBIDDEN
@@ -118,7 +180,7 @@ def driver_shipments_history(request):
     
     shipments_data = []
     
-    if user.role == 'ministry_driver':
+    if user.role in ['ministry_driver', 'ministry_courier']:
         # Ministry driver shipments
         ministry_shipments = MinistryToProvinceShipment.objects.filter(
             assigned_courier=user,
@@ -136,13 +198,13 @@ def driver_shipments_history(request):
                 'type': 'ministry_to_province',
                 'status': shipment.status,
                 'from': 'وزارة التربية والتعليم',
-                'to': shipment.to_province.province.name if shipment.to_province and shipment.to_province.province else 'غير محدد',
+                'to': shipment.to_province.province if shipment.to_province and shipment.to_province.province else 'غير محدد',
                 'books_count': len(shipment.books or []),
                 'created_at': shipment.created_at.isoformat(),
                 'delivered_at': shipment.delivered_at.isoformat() if shipment.delivered_at else None,
             })
     
-    elif user.role == 'province_driver':
+    elif user.role in ['province_driver', 'province_courier']:
         # Province driver shipments
         province_shipments = ProvinceToSchoolShipment.objects.filter(
             assigned_courier=user,
@@ -182,15 +244,20 @@ def driver_update_location(request, shipment_id):
     """
     user = request.user
     
-    if user.role not in ['ministry_driver', 'province_driver']:
+    if user.role not in ['ministry_driver', 'province_driver', 'ministry_courier', 'province_courier']:
         return Response(
             {'error': 'Only drivers can update location'},
             status=status.HTTP_403_FORBIDDEN
         )
     
     try:
-        shipment = Shipment.objects.get(id=shipment_id, assigned_courier=user)
-    except Shipment.DoesNotExist:
+        shipment, shipment_type, _serializer_class = _get_driver_shipment(user, shipment_id)
+    except PermissionError:
+        return Response(
+            {'error': 'Only drivers can update location'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    except (MinistryToProvinceShipment.DoesNotExist, ProvinceToSchoolShipment.DoesNotExist):
         return Response(
             {'error': 'Shipment not found or not assigned to you'},
             status=status.HTTP_404_NOT_FOUND
@@ -205,20 +272,21 @@ def driver_update_location(request, shipment_id):
             status=status.HTTP_400_BAD_REQUEST
         )
     
-    # Store location in shipment metadata (you may want to create a separate model)
-    if not hasattr(shipment, 'driver_location'):
-        shipment.driver_location = {}
-    
-    shipment.driver_location = {
-        'latitude': float(latitude),
-        'longitude': float(longitude),
-        'updated_at': timezone.now().isoformat()
-    }
-    shipment.save()
+    # Persist current location on shipment record
+    shipment.current_latitude = float(latitude)
+    shipment.current_longitude = float(longitude)
+    shipment.last_location_update = timezone.now()
+    shipment.save(update_fields=['current_latitude', 'current_longitude', 'last_location_update'])
     
     return Response({
         'message': 'Location updated successfully',
-        'location': shipment.driver_location
+        'shipment_id': shipment.id,
+        'shipment_type': shipment_type,
+        'location': {
+            'latitude': shipment.current_latitude,
+            'longitude': shipment.current_longitude,
+            'updated_at': shipment.last_location_update.isoformat() if shipment.last_location_update else None,
+        }
     })
 
 
@@ -231,42 +299,69 @@ def driver_scan_qr(request, shipment_id):
     """
     user = request.user
     
-    if user.role not in ['ministry_driver', 'province_driver']:
+    if user.role not in ['ministry_driver', 'province_driver', 'ministry_courier', 'province_courier']:
         return Response(
             {'error': 'Only drivers can scan QR codes'},
             status=status.HTTP_403_FORBIDDEN
         )
     
     try:
-        shipment = Shipment.objects.get(id=shipment_id, assigned_courier=user)
-    except Shipment.DoesNotExist:
+        shipment, shipment_type, _serializer_class = _get_driver_shipment(user, shipment_id)
+    except PermissionError:
+        return Response(
+            {'error': 'Only drivers can scan QR codes'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    except (MinistryToProvinceShipment.DoesNotExist, ProvinceToSchoolShipment.DoesNotExist):
         return Response(
             {'error': 'Shipment not found or not assigned to you'},
             status=status.HTTP_404_NOT_FOUND
         )
     
     scanned_qr = request.data.get('qr_code')
+    qr_token = _extract_qr_token(scanned_qr)
     
-    if not scanned_qr:
+    if not qr_token:
         return Response(
             {'error': 'qr_code is required'},
             status=status.HTTP_400_BAD_REQUEST
         )
     
-    # Verify QR code matches shipment
-    expected_qr = f"SHIPMENT-{shipment.id}-{shipment.tracking_code}"
+    verification = verify_shipment_qr_code(qr_token)
+    if not verification.get('valid'):
+        return Response(
+            {
+                'valid': False,
+                'message': verification.get('error', 'Invalid QR code')
+            },
+            status=status.HTTP_400_BAD_REQUEST
+        )
     
-    if scanned_qr == expected_qr:
-        return Response({
-            'valid': True,
-            'message': 'QR code verified successfully',
-            'shipment': ShipmentSerializer(shipment).data
-        })
-    else:
-        return Response({
-            'valid': False,
-            'message': 'Invalid QR code for this shipment'
-        }, status=status.HTTP_400_BAD_REQUEST)
+    # Ensure token belongs to this shipment
+    if verification.get('shipment_id') and verification['shipment_id'] != shipment.id:
+        return Response(
+            {
+                'valid': False,
+                'message': 'QR code does not match this shipment'
+            },
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    now = timezone.now()
+    shipment.qr_used = True
+    shipment.qr_scanned_at = now
+    if shipment.status not in ['delivered', 'confirmed']:
+        shipment.status = 'delivered'
+        shipment.delivered_at = now
+    shipment.save(update_fields=['qr_used', 'qr_scanned_at', 'status', 'delivered_at'])
+    invalidate_shipment_qr_code(qr_token)
+    
+    return Response({
+        'valid': True,
+        'message': 'QR code verified successfully',
+        'shipment_type': shipment_type,
+        'shipment': serializer_class(shipment).data
+    })
 
 
 @api_view(['POST'])
@@ -279,15 +374,20 @@ def driver_upload_photo(request, shipment_id):
     """
     user = request.user
     
-    if user.role not in ['ministry_driver', 'province_driver']:
+    if user.role not in ['ministry_driver', 'province_driver', 'ministry_courier', 'province_courier']:
         return Response(
             {'error': 'Only drivers can upload photos'},
             status=status.HTTP_403_FORBIDDEN
         )
     
     try:
-        shipment = Shipment.objects.get(id=shipment_id, assigned_courier=user)
-    except Shipment.DoesNotExist:
+        shipment, shipment_type, _serializer_class = _get_driver_shipment(user, shipment_id)
+    except PermissionError:
+        return Response(
+            {'error': 'Only drivers can upload photos'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    except (MinistryToProvinceShipment.DoesNotExist, ProvinceToSchoolShipment.DoesNotExist):
         return Response(
             {'error': 'Shipment not found or not assigned to you'},
             status=status.HTTP_404_NOT_FOUND
@@ -301,27 +401,13 @@ def driver_upload_photo(request, shipment_id):
             status=status.HTTP_400_BAD_REQUEST
         )
     
-    # Save photo (you may want to add a DeliveryProof model)
-    # For now, we'll store the path in shipment metadata
-    from django.core.files.storage import default_storage
-    
-    file_path = f'delivery_photos/shipment_{shipment_id}_{timezone.now().timestamp()}.jpg'
-    saved_path = default_storage.save(file_path, photo)
-    
-    # Update shipment
-    if not hasattr(shipment, 'delivery_photos'):
-        shipment.delivery_photos = []
-    
-    shipment.delivery_photos.append({
-        'path': saved_path,
-        'uploaded_at': timezone.now().isoformat(),
-        'uploaded_by': user.id
-    })
-    shipment.save()
+    shipment.proof_photo = photo
+    shipment.save(update_fields=['proof_photo'])
     
     return Response({
         'message': 'Photo uploaded successfully',
-        'photo_url': default_storage.url(saved_path)
+        'shipment_type': shipment_type,
+        'photo_url': shipment.proof_photo.url if shipment.proof_photo else None
     })
 
 
@@ -334,15 +420,20 @@ def driver_upload_signature(request, shipment_id):
     """
     user = request.user
     
-    if user.role not in ['ministry_driver', 'province_driver']:
+    if user.role not in ['ministry_driver', 'province_driver', 'ministry_courier', 'province_courier']:
         return Response(
             {'error': 'Only drivers can upload signatures'},
             status=status.HTTP_403_FORBIDDEN
         )
     
     try:
-        shipment = Shipment.objects.get(id=shipment_id, assigned_courier=user)
-    except Shipment.DoesNotExist:
+        shipment, shipment_type, serializer_class = _get_driver_shipment(user, shipment_id)
+    except PermissionError:
+        return Response(
+            {'error': 'Only drivers can upload signatures'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    except (MinistryToProvinceShipment.DoesNotExist, ProvinceToSchoolShipment.DoesNotExist):
         return Response(
             {'error': 'Shipment not found or not assigned to you'},
             status=status.HTTP_404_NOT_FOUND
@@ -363,19 +454,16 @@ def driver_upload_signature(request, shipment_id):
         
         signature_bytes = base64.b64decode(signature_data)
         
-        # Save signature
-        from django.core.files.storage import default_storage
-        file_path = f'signatures/shipment_{shipment_id}_{timezone.now().timestamp()}.png'
-        saved_path = default_storage.save(file_path, ContentFile(signature_bytes))
-        
-        # Update shipment
-        shipment.signature_path = saved_path
-        shipment.signature_uploaded_at = timezone.now()
-        shipment.save()
+        shipment.digital_signature.save(
+            f'signature_{shipment_id}_{int(timezone.now().timestamp())}.png',
+            ContentFile(signature_bytes),
+            save=True
+        )
         
         return Response({
             'message': 'Signature uploaded successfully',
-            'signature_url': default_storage.url(saved_path)
+            'shipment_type': shipment_type,
+            'signature_url': shipment.digital_signature.url if shipment.digital_signature else None
         })
         
     except Exception as e:
@@ -393,15 +481,20 @@ def driver_start_delivery(request, shipment_id):
     """
     user = request.user
     
-    if user.role not in ['ministry_driver', 'province_driver']:
+    if user.role not in ['ministry_driver', 'province_driver', 'ministry_courier', 'province_courier']:
         return Response(
             {'error': 'Only drivers can start delivery'},
             status=status.HTTP_403_FORBIDDEN
         )
     
     try:
-        shipment = Shipment.objects.get(id=shipment_id, assigned_courier=user)
-    except Shipment.DoesNotExist:
+        shipment, shipment_type, serializer_class = _get_driver_shipment(user, shipment_id)
+    except PermissionError:
+        return Response(
+            {'error': 'Only drivers can start delivery'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    except (MinistryToProvinceShipment.DoesNotExist, ProvinceToSchoolShipment.DoesNotExist):
         return Response(
             {'error': 'Shipment not found or not assigned to you'},
             status=status.HTTP_404_NOT_FOUND
@@ -414,11 +507,13 @@ def driver_start_delivery(request, shipment_id):
         )
     
     shipment.status = 'out_for_delivery'
-    shipment.save()
+    shipment.started_delivery_at = timezone.now()
+    shipment.save(update_fields=['status', 'started_delivery_at'])
     
     return Response({
         'message': 'Delivery started successfully',
-        'shipment': ShipmentSerializer(shipment).data
+        'shipment_type': shipment_type,
+        'shipment': serializer_class(shipment).data
     })
 
 
@@ -431,15 +526,20 @@ def driver_complete_delivery(request, shipment_id):
     """
     user = request.user
     
-    if user.role not in ['ministry_driver', 'province_driver']:
+    if user.role not in ['ministry_driver', 'province_driver', 'ministry_courier', 'province_courier']:
         return Response(
             {'error': 'Only drivers can complete delivery'},
             status=status.HTTP_403_FORBIDDEN
         )
     
     try:
-        shipment = Shipment.objects.get(id=shipment_id, assigned_courier=user)
-    except Shipment.DoesNotExist:
+        shipment, shipment_type, serializer_class = _get_driver_shipment(user, shipment_id)
+    except PermissionError:
+        return Response(
+            {'error': 'Only drivers can complete delivery'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    except (MinistryToProvinceShipment.DoesNotExist, ProvinceToSchoolShipment.DoesNotExist):
         return Response(
             {'error': 'Shipment not found or not assigned to you'},
             status=status.HTTP_404_NOT_FOUND
@@ -454,11 +554,15 @@ def driver_complete_delivery(request, shipment_id):
     shipment.status = 'delivered'
     shipment.delivered_at = timezone.now()
     shipment.delivery_notes = request.data.get('notes', '')
+    recipient_name = request.data.get('recipient_name')
+    if recipient_name:
+        shipment.recipient_name = recipient_name
     shipment.save()
     
     return Response({
         'message': 'Delivery completed successfully',
-        'shipment': ShipmentSerializer(shipment).data
+        'shipment_type': shipment_type,
+        'shipment': serializer_class(shipment).data
     })
 
 
@@ -480,17 +584,16 @@ def school_incoming_deliveries(request):
             status=status.HTTP_403_FORBIDDEN
         )
     
-    # Get shipments headed to this school
-    shipments = Shipment.objects.filter(
-        to_school_name=user.school.name,
-        status__in=['assigned', 'out_for_delivery', 'delivered']
+    shipments = ProvinceToSchoolShipment.objects.filter(
+        to_school=user.school,
+        status__in=['assigned', 'out_for_delivery', 'delivered', 'confirmed']
     ).select_related(
-        'from_ministry',
-        'to_province',
+        'from_province',
+        'to_school',
         'assigned_courier'
     ).order_by('-created_at')
     
-    serializer = ShipmentSerializer(shipments, many=True)
+    serializer = ProvinceToSchoolShipmentSerializer(shipments, many=True)
     return Response({
         'count': shipments.count(),
         'results': serializer.data
@@ -517,8 +620,8 @@ def province_receive_shipment(request, shipment_id):
         )
     
     try:
-        shipment = Shipment.objects.get(id=shipment_id)
-    except Shipment.DoesNotExist:
+        shipment = MinistryToProvinceShipment.objects.select_related('to_province', 'from_ministry', 'assigned_courier').get(id=shipment_id)
+    except MinistryToProvinceShipment.DoesNotExist:
         return Response(
             {'error': 'Shipment not found'},
             status=status.HTTP_404_NOT_FOUND
@@ -561,17 +664,22 @@ def province_receive_shipment(request, shipment_id):
         )
     
     # Update shipment
+    now = timezone.now()
     shipment.status = 'confirmed'
-    shipment.confirmed_at = timezone.now()
+    shipment.confirmed_at = now
     shipment.confirmed_by = user
-    shipment.receiver_name = receiver_name
-    shipment.receiver_notes = request.data.get('notes', '')
+    shipment.recipient_name = receiver_name
+    shipment.delivery_notes = request.data.get('notes', '')
     shipment.delivery_condition = request.data.get('condition', 'good')
+    shipment.qr_used = True
+    if not shipment.qr_scanned_at:
+        shipment.qr_scanned_at = now
     shipment.save()
     
     return Response({
         'message': 'Shipment confirmed successfully',
-        'shipment': ShipmentSerializer(shipment).data
+        'shipment_type': 'ministry_to_province',
+        'shipment': MinistryToProvinceShipmentSerializer(shipment).data
     }, status=status.HTTP_200_OK)
 
 
@@ -619,12 +727,16 @@ def school_receive_delivery(request, shipment_id):
         )
     
     # Update shipment
+    now = timezone.now()
     shipment.status = 'confirmed'
-    shipment.confirmed_at = timezone.now()
+    shipment.confirmed_at = now
     shipment.confirmed_by = user
     shipment.recipient_name = receiver_name
     shipment.delivery_notes = request.data.get('notes', '')
     shipment.delivery_condition = request.data.get('condition', 'good')
+    shipment.qr_used = True
+    if not shipment.qr_scanned_at:
+        shipment.qr_scanned_at = now
     shipment.save()
     
     return Response({
@@ -654,40 +766,48 @@ def school_scan_qr_receive(request, shipment_id):
             status=status.HTTP_403_FORBIDDEN
         )
     
-    try:
-        shipment = Shipment.objects.get(
-            id=shipment_id,
-            to_school_name=user.school.name
-        )
-    except Shipment.DoesNotExist:
-        return Response(
-            {'error': 'Shipment not found or not for your school'},
-            status=status.HTTP_404_NOT_FOUND
-        )
-    
     scanned_qr = request.data.get('qr_code')
+    qr_token = _extract_qr_token(scanned_qr)
     
-    if not scanned_qr:
+    if not qr_token:
         return Response(
             {'error': 'qr_code is required'},
             status=status.HTTP_400_BAD_REQUEST
         )
     
-    # Verify QR code
-    expected_qr = f"SHIPMENT-{shipment.id}-{shipment.tracking_code}"
+    verification = verify_shipment_qr_code(qr_token)
+    if not verification.get('valid'):
+        return Response(
+            {'valid': False, 'message': verification.get('error', 'Invalid QR code')},
+            status=status.HTTP_400_BAD_REQUEST
+        )
     
-    if scanned_qr == expected_qr:
-        return Response({
-            'valid': True,
-            'message': 'QR code verified successfully',
-            'shipment': ShipmentSerializer(shipment).data,
-            'ready_to_receive': shipment.status == 'delivered'
-        })
-    else:
-        return Response({
-            'valid': False,
-            'message': 'Invalid QR code'
-        }, status=status.HTTP_400_BAD_REQUEST)
+    shipment, shipment_type, serializer_class = _get_shipment_by_qr_token(qr_token)
+    if not shipment:
+        return Response(
+            {'valid': False, 'message': 'Shipment not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    if shipment_type != 'province_to_school' or shipment.to_school != user.school:
+        return Response(
+            {'valid': False, 'message': 'Shipment not for your school'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    now = timezone.now()
+    shipment.qr_used = True
+    shipment.qr_scanned_at = now
+    shipment.save(update_fields=['qr_used', 'qr_scanned_at'])
+    
+    return Response({
+        'valid': True,
+        'message': 'QR code verified successfully',
+        'shipment_type': shipment_type,
+        'shipment': serializer_class(shipment).data,
+        'ready_to_receive': shipment.status == 'delivered',
+        'qr_scanned_at': shipment.qr_scanned_at.isoformat() if shipment.qr_scanned_at else None
+    })
 
 
 @api_view(['GET'])
@@ -698,30 +818,29 @@ def driver_performance_stats(request):
     """
     user = request.user
     
-    if user.role not in ['ministry_driver', 'province_driver']:
+    if user.role not in ['ministry_driver', 'province_driver', 'ministry_courier', 'province_courier']:
         return Response(
             {'error': 'Only drivers can access this endpoint'},
             status=status.HTTP_403_FORBIDDEN
         )
     
-    # Get all shipments for this driver
-    all_shipments = Shipment.objects.filter(assigned_courier=user)
+    if user.role in ['ministry_driver', 'ministry_courier']:
+        all_shipments = MinistryToProvinceShipment.objects.filter(assigned_courier=user)
+    elif user.role in ['province_driver', 'province_courier']:
+        all_shipments = ProvinceToSchoolShipment.objects.filter(assigned_courier=user)
+    else:
+        return Response(
+            {'error': 'Only drivers can access this endpoint'},
+            status=status.HTTP_403_FORBIDDEN
+        )
     
-    # Statistics
     total_deliveries = all_shipments.count()
     completed_deliveries = all_shipments.filter(status='confirmed').count()
-    pending_deliveries = all_shipments.filter(
-        status__in=['assigned', 'out_for_delivery']
-    ).count()
+    pending_deliveries = all_shipments.filter(status__in=['assigned', 'out_for_delivery']).count()
     
-    # Last 30 days
     thirty_days_ago = timezone.now() - timedelta(days=30)
-    recent_deliveries = all_shipments.filter(
-        delivered_at__gte=thirty_days_ago,
-        status='confirmed'
-    ).count()
+    recent_deliveries = all_shipments.filter(delivered_at__gte=thirty_days_ago, status='confirmed').count()
     
-    # Success rate
     success_rate = (completed_deliveries / total_deliveries * 100) if total_deliveries > 0 else 0
     
     return Response({
@@ -770,14 +889,14 @@ def unified_qr_scan(request):
     user = request.user
     
     # التحقق من صلاحيات المستخدم
-    if user.role not in ['ministry_driver', 'province_driver']:
+    if user.role not in ['ministry_driver', 'province_driver', 'ministry_courier', 'province_courier']:
         return Response(
             {'error': 'فقط المندوبون يمكنهم مسح QR Code للتسليم'},
             status=status.HTTP_403_FORBIDDEN
         )
     
     # الحصول على البيانات
-    qr_token = request.data.get('qr_token')
+    qr_token = _extract_qr_token(request.data.get('qr_token'))
     recipient_name = request.data.get('recipient_name', '')
     latitude = request.data.get('latitude')
     longitude = request.data.get('longitude')
@@ -796,9 +915,6 @@ def unified_qr_scan(request):
             status=status.HTTP_400_BAD_REQUEST
         )
     
-    # التحقق من صلاحية QR Code
-    from .qr_generator import verify_shipment_qr_code
-    
     verification_result = verify_shipment_qr_code(qr_token)
     
     if not verification_result.get('valid'):
@@ -810,62 +926,45 @@ def unified_qr_scan(request):
             status=status.HTTP_400_BAD_REQUEST
         )
     
-    shipment_id = verification_result.get('shipment_id')
-    
-    # الحصول على الشحنة
-    try:
-        shipment = Shipment.objects.select_related(
-            'from_ministry',
-            'to_province',
-            'assigned_courier'
-        ).get(id=shipment_id)
-    except Shipment.DoesNotExist:
+    shipment, shipment_type, serializer_class = _get_shipment_by_qr_token(qr_token)
+    if not shipment:
         return Response(
             {'error': 'الشحنة غير موجودة'},
             status=status.HTTP_404_NOT_FOUND
         )
     
-    # التحقق من أن الشحنة مسندة للمندوب الحالي
+    if verification_result.get('shipment_id') and verification_result['shipment_id'] != shipment.id:
+        return Response(
+            {'error': 'رمز QR لا يطابق هذه الشحنة'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
     if shipment.assigned_courier != user:
         return Response(
             {'error': 'هذه الشحنة غير مسندة لك'},
             status=status.HTTP_403_FORBIDDEN
         )
     
-    # التحقق من حالة الشحنة
-    if shipment.status == 'delivered':
+    if shipment.status in ['delivered', 'confirmed']:
         return Response(
             {'error': 'تم تسليم هذه الشحنة مسبقاً'},
             status=status.HTTP_400_BAD_REQUEST
         )
     
-    if shipment.status == 'confirmed':
-        return Response(
-            {'error': 'تم تأكيد هذه الشحنة مسبقاً'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    
-    # تحديث بيانات الشحنة
     now = timezone.now()
-    
     shipment.status = 'delivered'
     shipment.delivered_at = now
     shipment.recipient_name = recipient_name
     shipment.delivery_notes = notes
-    
-    # تسجيل الموقع
     if latitude and longitude:
         shipment.current_latitude = float(latitude)
         shipment.current_longitude = float(longitude)
         shipment.last_location_update = now
-    
-    # تحديث بيانات QR
     shipment.qr_used = True
     shipment.qr_scanned_at = now
-    
     shipment.save()
+    invalidate_shipment_qr_code(qr_token)
     
-    # تسجيل في الـ logs
     import logging
     logger = logging.getLogger(__name__)
     logger.info(
@@ -873,13 +972,11 @@ def unified_qr_scan(request):
         f"to {recipient_name} at {now}"
     )
     
-    # إرسال إشعار (اختياري - يمكن إضافته لاحقاً)
-    # من الممكن إرسال إشعار للمستلم أو للإدارة
-    
     return Response({
         'success': True,
         'message': 'تم تأكيد التسليم بنجاح',
-        'shipment': ShipmentSerializer(shipment).data,
+        'shipment_type': shipment_type,
+        'shipment': serializer_class(shipment).data,
         'delivery_details': {
             'delivered_at': shipment.delivered_at.isoformat(),
             'recipient_name': shipment.recipient_name,

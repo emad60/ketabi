@@ -136,12 +136,15 @@ export default function MinistryProvinceShipmentsPage() {
       to_school_name: selectedRequest.province_name,
       courier_role: 'ministry_courier',
       assigned_courier: formData.courier_id ? parseInt(formData.courier_id) : null,
-      books: selectedRequest.items
-        .filter((item) => item.book) // Only include items with valid book_id
-        .map((item) => ({
-          book_id: item.book!, // Use book field (ID of the actual book)
+      books: selectedRequest.items.map((item) => ({
+          // If book ID exists, use it; otherwise we'll need backend to look it up
+          book_id: item.book || undefined,
+          // Include subject/grade/term for items without book_id
+          subject: item.subject,
+          grade: item.grade,
           quantity: item.approved_quantity || item.quantity,
-          term: 'first', // Default term
+          // Use term from item if available
+          term: item.term || item.book_term || 'first',
         })),
       delivery_notes: formData.notes || `شحنة لطلب المحافظة رقم ${selectedRequest.request_number}`,
       related_request: selectedRequest.id,
@@ -290,11 +293,18 @@ export default function MinistryProvinceShipmentsPage() {
                         <div className="bg-gray-50 p-3 rounded">
                           <p className="text-xs text-gray-500 mb-2">تفاصيل الطلب:</p>
                           <div className="space-y-1">
-                            {request.items?.slice(0, 3).map((item, idx) => (
-                              <p key={idx} className="text-sm">
-                                • {item.book_title}: {item.approved_quantity} نسخة
-                              </p>
-                            ))}
+                            {request.items?.slice(0, 3).map((item, idx) => {
+                              // Always show term from book_term or term field
+                              const termDisplay = item.book_term || item.term || '';
+                              const displayTitle = termDisplay 
+                                ? `${item.book_title} - ${termDisplay}`
+                                : item.book_title;
+                              return (
+                                <p key={idx} className="text-sm">
+                                  • {displayTitle}: {item.approved_quantity} نسخة
+                                </p>
+                              );
+                            })}
                             {request.items?.length > 3 && (
                               <p className="text-sm text-gray-500">
                                 + {request.items.length - 3} كتب أخرى

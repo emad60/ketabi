@@ -37,20 +37,24 @@ from .views import (
     # Unified Shipments List
     get_shipments_list,
     get_shipment_detail,
+    # Unified status update
+    update_shipment_status,
+    # Assign courier
+    assign_courier,
 )
 
 # Import mobile views
 from .mobile_views import (
-    driver_active_shipments,
-    driver_shipments_history,
-    school_receive_delivery,
-)
-
-# Import new mobile views
-from .mobile_views import (
     # Driver APIs
     driver_active_shipments,
     driver_shipments_history,
+    driver_start_delivery,
+    driver_complete_delivery,
+    driver_scan_qr,
+    driver_upload_photo,
+    driver_upload_signature,
+    driver_update_location,
+    driver_performance_stats,
     # School APIs
     school_receive_delivery,
 )
@@ -94,6 +98,8 @@ urlpatterns = [
     # Unified Shipments List (متوافق مع Frontend)
     path('shipments/', get_shipments_list, name='shipments-list'),
     path('shipments/<int:shipment_id>/', get_shipment_detail, name='shipment-detail'),
+    path('shipments/<int:shipment_id>/status/', update_shipment_status, name='shipment-status-update'),
+    path('shipments/<int:shipment_id>/assign/', assign_courier, name='shipment-assign-courier'),
     
     # Reports endpoints (Download)
     path('reports/warehouse/<int:warehouse_id>/pdf/', warehouse_pdf_report, name='warehouse-pdf-report'),
@@ -140,9 +146,18 @@ urlpatterns = [
     
     
     # ===== NEW Mobile APIs (v2) =====
-    # Driver APIs
+    # Driver APIs - List endpoints
     path('mobile/driver/shipments/active/', driver_active_shipments, name='driver-active-shipments'),
     path('mobile/driver/shipments/history/', driver_shipments_history, name='driver-shipments-history'),
+    
+    # Driver APIs - Shipment actions (required by Flutter app)
+    path('mobile/driver/shipments/<int:shipment_id>/start_delivery/', driver_start_delivery, name='driver-start-delivery'),
+    path('mobile/driver/shipments/<int:shipment_id>/confirm_delivery/', driver_complete_delivery, name='driver-confirm-delivery'),
+    path('mobile/driver/shipments/<int:shipment_id>/scan-qr/', driver_scan_qr, name='driver-scan-qr'),
+    path('mobile/driver/shipments/<int:shipment_id>/upload-photo/', driver_upload_photo, name='driver-upload-photo'),
+    path('mobile/driver/shipments/<int:shipment_id>/upload-signature/', driver_upload_signature, name='driver-upload-signature'),
+    path('mobile/driver/shipments/<int:shipment_id>/location/', driver_update_location, name='driver-update-location'),
+    path('mobile/driver/performance/', driver_performance_stats, name='driver-performance'),
     
     # School Staff APIs
     path('mobile/school/deliveries/<int:shipment_id>/receive/', school_receive_delivery, name='school-receive-delivery'),

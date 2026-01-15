@@ -346,10 +346,12 @@ class PDFReportGenerator:
         return buffer
     
     @staticmethod
-    def generate_shipment_report(shipment):
+    def generate_shipment_report(shipment, shipment_type=None):
         """
         إنشاء تقرير PDF لشحنة محددة
         """
+        from .models import MinistryToProvinceShipment, ProvinceToSchoolShipment
+        
         buffer = BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=A4)
         elements = []
@@ -378,16 +380,18 @@ class PDFReportGenerator:
             ['Created Date:', shipment.created_at.strftime('%Y-%m-%d %H:%M')],
         ]
         
-        # معلومات المصدر والوجهة
-        if shipment.from_ministry:
-            info_data.append(['From:', f"{shipment.from_ministry.name} (Ministry)"])
-        
-        if shipment.to_province:
-            province_name = getattr(shipment.to_province, 'province', 'Unknown')
-            info_data.append(['To:', f"{shipment.to_province.name} ({province_name})"])
-        
-        if shipment.to_school_name:
-            info_data.append(['School:', shipment.to_school_name])
+        # معلومات المصدر والوجهة حسب نوع الشحنة
+        if isinstance(shipment, MinistryToProvinceShipment):
+            if shipment.from_ministry:
+                info_data.append(['From:', f"{shipment.from_ministry.name} (Ministry)"])
+            if shipment.to_province:
+                province_name = shipment.to_province.province
+                info_data.append(['To:', f"{shipment.to_province.name} ({province_name})"])
+        elif isinstance(shipment, ProvinceToSchoolShipment):
+            if shipment.from_province:
+                info_data.append(['From:', f"{shipment.from_province.name} ({shipment.from_province.province})"])
+            if shipment.to_school:
+                info_data.append(['To School:', shipment.to_school.name])
         
         # معلومات المندوب
         if shipment.assigned_courier:
@@ -413,30 +417,14 @@ class PDFReportGenerator:
         elements.append(Paragraph("Books in Shipment", styles['Heading2']))
         elements.append(Spacer(1, 0.1*inch))
         
-        books_data = [['#', 'Book Title', 'Grade', 'Subject', 'Term', 'Quantity']]
+        books_data = [['#', 'Book Title', 'Quantity']]
         
         for idx, book_item in enumerate(shipment.books or [], 1):
-            try:
-                book = Book.objects.select_related('subject', 'grade', 'term').get(id=book_item.get('book_id'))
-                books_data.append([
-                    str(idx),
-                    book.title[:40],
-                    book.grade.name,
-                    book.subject.name,
-                    book.term.name,
-                    str(book_item.get('quantity', 0))
-                ])
-            except Book.DoesNotExist:
-                books_data.append([
-                    str(idx),
-                    f"Book ID: {book_item.get('book_id')}",
-                    '-',
-                    '-',
-                    '-',
-                    str(book_item.get('quantity', 0))
-                ])
+            title = book_item.get('title', 'Unknown Book')
+            quantity = book_item.get('quantity', 0)
+            books_data.append([str(idx), title, str(quantity)])
         
-        books_table = Table(books_data, colWidths=[0.5*inch, 2.5*inch, 1*inch, 1*inch, 1*inch, 0.8*inch])
+        books_table = Table(books_data, colWidths=[0.5*inch, 4*inch, 1.5*inch])
         books_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1976d2')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),

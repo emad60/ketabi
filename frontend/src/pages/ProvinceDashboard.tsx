@@ -44,6 +44,9 @@ interface ProvinceStats {
   };
   incoming_shipments?: number;
   outgoing_shipments?: number;
+  received_shipments?: number;
+  out_for_delivery?: number;
+  delivered_shipments?: number;
   incoming_shipments_detail?: {
     total: number;
     by_status: {
@@ -476,7 +479,7 @@ export function ProvinceDashboard() {
                   </CardHeader>
                     <CardContent>
                     <div className="text-3xl font-bold text-gray-900">
-                      {stats?.incoming_shipments?.total || 0}
+                      {stats?.incoming_shipments || 0}
                     </div>
                     <p className="text-xs text-gray-600 mt-2">شحنة واردة</p>
                   </CardContent>
@@ -494,7 +497,7 @@ export function ProvinceDashboard() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-3xl font-bold text-gray-900">
-                      {((stats?.incoming_shipments_detail?.by_status?.pending || 0) + (stats?.incoming_shipments_detail?.by_status?.out_for_delivery || 0)) || (stats?.incoming_shipments || 0)}
+                      {stats?.out_for_delivery || 0}
                     </div>
                     <p className="text-xs text-gray-600 mt-1">شحنة قيد التنفيذ</p>
                   </CardContent>
@@ -512,7 +515,7 @@ export function ProvinceDashboard() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-3xl font-bold text-gray-900">
-                      {stats?.incoming_shipments_detail?.by_status?.delivered || stats?.delivered_shipments || 0}
+                      {stats?.received_shipments || stats?.delivered_shipments || 0}
                     </div>
                     <p className="text-xs text-gray-600 mt-1">شحنة مكتملة</p>
                   </CardContent>

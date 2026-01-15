@@ -135,7 +135,7 @@ export default function ProvinceShipmentNotificationsPage() {
 
   const markAsRead = async (notificationId: number) => {
     try {
-      await api.post(`/notifications/${notificationId}/mark-read/`);
+      await api.post(`/notifications/${notificationId}/mark_read/`);
       setNotifications(notifications.map(n => 
         n.id === notificationId ? { ...n, read: true } : n
       ));

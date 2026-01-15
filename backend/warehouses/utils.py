@@ -30,15 +30,38 @@ def pack_qr_payload(shipment) -> Dict[str, Any]:
     تجهيز بيانات الـ QR للشحنة
     يتضمن: معرّف الشحنة، المستودع المصدر، الوجهة، الحالة، ورمز عشوائي
     """
-    payload = {
-        "shipment_id": shipment.id,
-        "from_warehouse_id": shipment.from_ministry_id if shipment.from_ministry else None,
-        "to_province_id": shipment.to_province_id if shipment.to_province else None,
-        "to_school": shipment.to_school_name or None,
-        "status": shipment.status,
-        "nonce": random_code(8),  # لمنع إعادة الاستخدام
-    }
-    return payload  # ✅ إضافة return المفقود
+    # تحديد نوع الشحنة
+    from .models import MinistryToProvinceShipment, ProvinceToSchoolShipment
+    
+    if isinstance(shipment, MinistryToProvinceShipment):
+        payload = {
+            "shipment_id": shipment.id,
+            "shipment_type": "ministry_to_province",
+            "from_warehouse_id": shipment.from_ministry_id if shipment.from_ministry else None,
+            "to_province_id": shipment.to_province_id if shipment.to_province else None,
+            "to_province": shipment.to_province.province if shipment.to_province else None,
+            "status": shipment.status,
+            "nonce": random_code(8),
+        }
+    elif isinstance(shipment, ProvinceToSchoolShipment):
+        payload = {
+            "shipment_id": shipment.id,
+            "shipment_type": "province_to_school",
+            "from_warehouse_id": shipment.from_province_id if shipment.from_province else None,
+            "to_school_id": shipment.to_school_id if shipment.to_school else None,
+            "to_school": shipment.to_school.name if shipment.to_school else None,
+            "status": shipment.status,
+            "nonce": random_code(8),
+        }
+    else:
+        # للتوافق مع أي نوع آخر
+        payload = {
+            "shipment_id": shipment.id,
+            "status": shipment.status,
+            "nonce": random_code(8),
+        }
+    
+    return payload
 
 def make_qr_image_bytes(payload: Dict[str, Any]) -> bytes:
     """

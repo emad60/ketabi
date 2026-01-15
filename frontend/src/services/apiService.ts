@@ -215,7 +215,8 @@ class ApiService {
 
   async createShipment(data: any): Promise<Shipment> {
     const response = await api.post('/warehouses/shipments/', data);
-    return response.data;
+    // Backend returns { success, message, shipment } - extract shipment object
+    return response.data.shipment || response.data;
   }
 
   async updateShipmentStatus(

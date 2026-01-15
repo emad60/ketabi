@@ -584,6 +584,10 @@ def province_dashboard_stats(request):
             'created_at': req.created_at.isoformat(),
         })
     
+    # حساب الشحنات المستلمة والشحنات قيد التسليم
+    received_shipments = incoming_shipments.filter(status='delivered').count()
+    out_for_delivery_count = outgoing_shipments.filter(status='out_for_delivery').count()
+    
     return Response({
         # بيانات متوافقة مع Frontend
         'total_schools': total_schools,
@@ -592,6 +596,8 @@ def province_dashboard_stats(request):
         'fulfilled_school_requests': fulfilled_school_requests,
         'incoming_shipments': total_incoming,
         'outgoing_shipments': total_outgoing,
+        'received_shipments': received_shipments,
+        'out_for_delivery': out_for_delivery_count,
         'current_inventory': total_books,
         'total_books': total_books,
         'total_books_distributed': total_books_distributed,
@@ -601,7 +607,7 @@ def province_dashboard_stats(request):
         'pending_requests': pending_school_requests,
         'approved_requests': approved_school_requests,
         'active_shipments': total_incoming + total_outgoing,
-        'delivered_shipments': incoming_shipments.filter(status='delivered').count(),
+        'delivered_shipments': received_shipments,
         'warehouse_stock': total_books,
         'completion_rate': outgoing_completion_rate,
         'school_requests': school_requests_list,
@@ -627,6 +633,7 @@ def province_dashboard_stats(request):
         },
         'outgoing_shipments_detail': {
             'total': total_outgoing,
+            'out_for_delivery': out_for_delivery_count,
         },
         'couriers': {
             'total': total_couriers,
@@ -1242,10 +1249,15 @@ def shipment_qr_code(request, shipment_id):
     from django.http import HttpResponse, Http404
     from .utils import make_qr_image_bytes, pack_qr_payload
     
+    # البحث في كلا النوعين
+    shipment = None
     try:
-        shipment = Shipment.objects.get(id=shipment_id)
-    except Shipment.DoesNotExist:
-        raise Http404("الشحنة غير موجودة")
+        shipment = MinistryToProvinceShipment.objects.get(id=shipment_id)
+    except MinistryToProvinceShipment.DoesNotExist:
+        try:
+            shipment = ProvinceToSchoolShipment.objects.get(id=shipment_id)
+        except ProvinceToSchoolShipment.DoesNotExist:
+            raise Http404("الشحنة غير موجودة")
     
     # توليد QR code
     payload = pack_qr_payload(shipment)
@@ -1266,16 +1278,27 @@ def shipment_pdf_report(request, shipment_id):
     from django.http import HttpResponse, Http404
     from .reports import PDFReportGenerator
     
+    # البحث في كلا النوعين
+    shipment = None
+    shipment_type = None
+    
     try:
-        shipment = Shipment.objects.select_related(
+        shipment = MinistryToProvinceShipment.objects.select_related(
             'from_ministry', 'to_province', 'assigned_courier'
         ).get(id=shipment_id)
-    except Shipment.DoesNotExist:
-        raise Http404("الشحنة غير موجودة")
+        shipment_type = 'ministry_to_province'
+    except MinistryToProvinceShipment.DoesNotExist:
+        try:
+            shipment = ProvinceToSchoolShipment.objects.select_related(
+                'from_province', 'to_school', 'assigned_courier'
+            ).get(id=shipment_id)
+            shipment_type = 'province_to_school'
+        except ProvinceToSchoolShipment.DoesNotExist:
+            raise Http404("الشحنة غير موجودة")
     
     # إنشاء PDF
     pdf_gen = PDFReportGenerator()
-    pdf_buffer = pdf_gen.generate_shipment_report(shipment)
+    pdf_buffer = pdf_gen.generate_shipment_report(shipment, shipment_type=shipment_type)
     
     # إرجاع PDF
     response = HttpResponse(pdf_buffer, content_type='application/pdf')
@@ -2295,7 +2318,16 @@ def create_ministry_to_province_shipment(request, data):
         # Get courier if provided
         courier = None
         if assigned_courier_id:
-            courier = User.objects.get(id=assigned_courier_id, role='ministry_courier')
+            try:
+                courier = User.objects.get(
+                    id=assigned_courier_id, 
+                    role__in=['ministry_courier', 'ministry_driver']
+                )
+            except User.DoesNotExist:
+                return Response({
+                    'success': False,
+                    'error': 'السائق غير موجود'
+                }, status=status.HTTP_404_NOT_FOUND)
         
         # Check stock availability
         for book_item in books_data:
@@ -2379,7 +2411,20 @@ def create_ministry_to_province_shipment(request, data):
             )
             
             total_books_count = sum(book.get('quantity', 0) for book in books_data)
-            message = f'تم إنشاء شحنة جديدة #{shipment.tracking_code} من الوزارة إلى محافظة {province_warehouse.province}. تحتوي على {total_books_count} كتاب من {len(books_data)} صنف.'
+            
+            # إنشاء قائمة بتفاصيل الكتب
+            books_details = []
+            for book in books_data[:5]:  # أول 5 كتب فقط لتجنب رسالة طويلة جداً
+                title = book.get('title', 'كتاب')
+                qty = book.get('quantity', 0)
+                books_details.append(f"• {title} ({qty} نسخة)")
+            
+            books_list = "\n".join(books_details)
+            more_books = ""
+            if len(books_data) > 5:
+                more_books = f"\n... و {len(books_data) - 5} صنف آخر"
+            
+            message = f'تم إنشاء شحنة جديدة #{shipment.tracking_code} من الوزارة إلى محافظة {province_warehouse.province}.\n\nإجمالي: {total_books_count} كتاب من {len(books_data)} صنف\n\nالكتب:\n{books_list}{more_books}'
             
             for province_user in province_users:
                 Notification.objects.create(
@@ -2393,10 +2438,13 @@ def create_ministry_to_province_shipment(request, data):
             
             # إشعار للمندوب إذا تم تعيينه
             if courier:
+                courier_books_summary = f"{total_books_count} كتاب" if len(books_data) == 1 else f"{total_books_count} كتاب من {len(books_data)} صنف"
+                courier_message = f'تم تعيينك لتوصيل شحنة #{shipment.tracking_code} إلى محافظة {province_warehouse.province}\n\nالمحتويات: {courier_books_summary}\n\n{books_list}{more_books}'
+                
                 Notification.objects.create(
                     user=courier,
                     title='تم تعيينك لشحنة جديدة',
-                    message=f'تم تعيينك لتوصيل شحنة #{shipment.tracking_code} إلى محافظة {province_warehouse.province}',
+                    message=courier_message,
                     notification_type='shipment',
                     related_object_type='ministry_to_province_shipment',
                     related_object_id=shipment.id
@@ -2486,7 +2534,16 @@ def create_province_to_school_shipment_api(request, data):
         # Get courier if provided
         courier = None
         if assigned_courier_id:
-            courier = User.objects.get(id=assigned_courier_id, role='province_driver')
+            try:
+                courier = User.objects.get(
+                    id=assigned_courier_id, 
+                    role__in=['province_courier', 'province_driver']
+                )
+            except User.DoesNotExist:
+                return Response({
+                    'success': False,
+                    'error': 'السائق غير موجود'
+                }, status=status.HTTP_404_NOT_FOUND)
         
         # Check stock availability
         for book_item in books_data:
@@ -2655,11 +2712,15 @@ def get_shipments_list(request):
                 'status': shipment.status,
                 'status_display': shipment.get_status_display(),
                 'from_location': shipment.from_province.province if shipment.from_province else 'غير محدد',
+                'from_province_name': shipment.from_province.province if shipment.from_province else 'غير محدد',
                 'to_location': shipment.to_school.name if shipment.to_school else 'غير محدد',
+                'to_school_name': shipment.to_school.name if shipment.to_school else 'غير محدد',
                 'courier': {
                     'id': shipment.assigned_courier.id if shipment.assigned_courier else None,
                     'name': shipment.assigned_courier.full_name if shipment.assigned_courier else 'غير مسند',
                 } if shipment.assigned_courier else None,
+                'assigned_courier_name': shipment.assigned_courier.full_name if shipment.assigned_courier else None,
+                'books': shipment.books if shipment.books else [],
                 'books_count': len(shipment.books) if shipment.books else 0,
                 'created_at': shipment.created_at.isoformat(),
                 'delivered_at': shipment.delivered_at.isoformat() if shipment.delivered_at else None,
@@ -2698,11 +2759,16 @@ def get_shipments_list(request):
                 'status': shipment.status,
                 'status_display': shipment.get_status_display(),
                 'from_location': shipment.from_ministry.name if shipment.from_ministry else 'وزارة التربية',
+                'from_ministry_name': shipment.from_ministry.name if shipment.from_ministry else 'وزارة التربية',
                 'to_location': shipment.to_province.province if shipment.to_province else 'غير محدد',
+                'to_province_name': shipment.to_province.province if shipment.to_province else 'غير محدد',
                 'courier': {
                     'id': shipment.assigned_courier.id if shipment.assigned_courier else None,
                     'name': shipment.assigned_courier.full_name if shipment.assigned_courier else 'غير مسند',
                 } if shipment.assigned_courier else None,
+                'assigned_courier_name': shipment.assigned_courier.full_name if shipment.assigned_courier else None,
+                'related_request_number': shipment.related_request.request_number if shipment.related_request else None,
+                'books': shipment.books if shipment.books else [],
                 'books_count': len(shipment.books) if shipment.books else 0,
                 'created_at': shipment.created_at.isoformat(),
                 'delivered_at': shipment.delivered_at.isoformat() if shipment.delivered_at else None,
@@ -2745,6 +2811,43 @@ def get_shipment_detail(request, shipment_id):
             if not hasattr(user, 'school') or user.school != shipment.to_school:
                 return Response({'error': 'غير مصرح لك بعرض هذه الشحنة'}, status=status.HTTP_403_FORBIDDEN)
         
+        # إضافة تفاصيل الكتب الكاملة
+        from books.models import Book
+        books_with_details = []
+        if shipment.books:
+            for book_item in shipment.books:
+                book_id = book_item.get('book_id')
+                if book_id:
+                    try:
+                        book = Book.objects.select_related('subject', 'grade', 'term').get(id=book_id)
+                        books_with_details.append({
+                            'book_id': book.id,
+                            'title': book_item.get('title', book.title),
+                            'quantity': book_item.get('quantity', 0),
+                            'book': {
+                                'id': book.id,
+                                'subject': book.subject.code if book.subject.code else str(book.subject.id),
+                                'subject_display': book.subject.name,
+                                'grade': str(book.grade.id),
+                                'grade_display': book.grade.name,
+                                'term': str(book.term.number),
+                                'term_display': book.term.name,
+                                'title': book.title,
+                            },
+                            'term': str(book.term.number),
+                        })
+                    except Book.DoesNotExist:
+                        # إذا لم يتم العثور على الكتاب، استخدم البيانات المخزنة
+                        books_with_details.append({
+                            'book_id': book_id,
+                            'title': book_item.get('title', 'غير محدد'),
+                            'quantity': book_item.get('quantity', 0),
+                            'book': None,
+                            'term': book_item.get('term', 'غير محدد'),
+                        })
+                else:
+                    books_with_details.append(book_item)
+        
         return Response({
             'id': shipment.id,
             'tracking_code': shipment.tracking_code,
@@ -2752,7 +2855,8 @@ def get_shipment_detail(request, shipment_id):
             'shipment_type': 'province_to_school',
             'status': shipment.status,
             'status_display': shipment.get_status_display(),
-            'from_location': shipment.from_province.province if shipment.from_province else 'غير محدد',
+            'from_location': shipment.from_province.name if shipment.from_province else 'غير محدد',
+            'from_province_name': shipment.from_province.name if shipment.from_province else 'غير محدد',
             'to_location': shipment.to_school.name if shipment.to_school else 'غير محدد',
             'to_school': {
                 'id': shipment.to_school.id,
@@ -2763,9 +2867,9 @@ def get_shipment_detail(request, shipment_id):
                 'name': shipment.assigned_courier.full_name,
                 'phone': getattr(shipment.assigned_courier, 'phone', ''),
             } if shipment.assigned_courier else None,
-            'books': shipment.books or [],
-            'books_count': len(shipment.books) if shipment.books else 0,
-            'notes': shipment.notes or '',
+            'books': books_with_details,
+            'books_count': len(books_with_details),
+            'delivery_notes': getattr(shipment, 'delivery_notes', '') or '',
             'created_at': shipment.created_at.isoformat(),
             'delivered_at': shipment.delivered_at.isoformat() if shipment.delivered_at else None,
         })
@@ -2786,6 +2890,43 @@ def get_shipment_detail(request, shipment_id):
         elif user.role == 'ministry_driver' and shipment.assigned_courier != user:
             return Response({'error': 'غير مصرح لك بعرض هذه الشحنة'}, status=status.HTTP_403_FORBIDDEN)
         
+        # إضافة تفاصيل الكتب الكاملة
+        from books.models import Book
+        books_with_details = []
+        if shipment.books:
+            for book_item in shipment.books:
+                book_id = book_item.get('book_id')
+                if book_id:
+                    try:
+                        book = Book.objects.select_related('subject', 'grade', 'term').get(id=book_id)
+                        books_with_details.append({
+                            'book_id': book.id,
+                            'title': book_item.get('title', book.title),
+                            'quantity': book_item.get('quantity', 0),
+                            'book': {
+                                'id': book.id,
+                                'subject': book.subject.code if book.subject.code else str(book.subject.id),
+                                'subject_display': book.subject.name,
+                                'grade': str(book.grade.id),
+                                'grade_display': book.grade.name,
+                                'term': str(book.term.number),
+                                'term_display': book.term.name,
+                                'title': book.title,
+                            },
+                            'term': str(book.term.number),
+                        })
+                    except Book.DoesNotExist:
+                        # إذا لم يتم العثور على الكتاب، استخدم البيانات المخزنة
+                        books_with_details.append({
+                            'book_id': book_id,
+                            'title': book_item.get('title', 'غير محدد'),
+                            'quantity': book_item.get('quantity', 0),
+                            'book': None,
+                            'term': book_item.get('term', 'غير محدد'),
+                        })
+                else:
+                    books_with_details.append(book_item)
+        
         return Response({
             'id': shipment.id,
             'tracking_code': shipment.tracking_code,
@@ -2800,9 +2941,10 @@ def get_shipment_detail(request, shipment_id):
                 'name': shipment.assigned_courier.full_name,
                 'phone': getattr(shipment.assigned_courier, 'phone', ''),
             } if shipment.assigned_courier else None,
-            'books': shipment.books or [],
-            'books_count': len(shipment.books) if shipment.books else 0,
-            'notes': shipment.notes or '',
+            'books': books_with_details,
+            'books_count': len(books_with_details),
+            'delivery_notes': getattr(shipment, 'delivery_notes', '') or '',
+            'related_request_number': shipment.related_request.request_number if shipment.related_request else None,
             'created_at': shipment.created_at.isoformat(),
             'delivered_at': shipment.delivered_at.isoformat() if shipment.delivered_at else None,
         })

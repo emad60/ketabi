@@ -93,7 +93,7 @@ class MinistryToProvinceShipment(models.Model):
         null=True,
         blank=True,
         related_name="ministry_assigned_shipments",
-        limit_choices_to={'role': 'ministry_driver'},
+        limit_choices_to={'role__in': ['ministry_courier', 'ministry_driver']},
         verbose_name="المندوب المكلف",
         help_text="مندوب الوزارة المكلف بالتوصيل"
     )
@@ -305,7 +305,7 @@ class ProvinceToSchoolShipment(models.Model):
         null=True,
         blank=True,
         related_name="province_assigned_shipments",
-        limit_choices_to={'role': 'province_driver'},
+        limit_choices_to={'role__in': ['province_courier', 'province_driver']},
         verbose_name="المندوب المكلف",
         help_text="مندوب المحافظة المكلف بالتوصيل"
     )

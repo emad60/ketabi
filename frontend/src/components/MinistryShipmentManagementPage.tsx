@@ -169,7 +169,18 @@ export function MinistryShipmentManagementPage() {
         const shipmentsData = await shipmentService.getShipments({ page_size: 100 });
         // shipmentService returns array or paginated response depending on backend
         const sData = Array.isArray(shipmentsData) ? shipmentsData : (shipmentsData.results || shipmentsData);
-        setShipments(Array.isArray(sData) ? sData : []);
+        const shipmentsArray = Array.isArray(sData) ? sData : [];
+        
+        // إزالة التكرارات بناءً على id
+        const uniqueShipments = shipmentsArray.reduce((acc: ShipmentType[], current: ShipmentType) => {
+          const duplicate = acc.find(item => item.id === current.id);
+          if (!duplicate) {
+            acc.push(current);
+          }
+          return acc;
+        }, []);
+        
+        setShipments(uniqueShipments);
       } catch (e) {
         console.error('Failed to fetch shipments via service:', e);
         setShipments([]);
@@ -444,8 +455,8 @@ export function MinistryShipmentManagementPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {Array.isArray(shipments) && shipments.map((shipment) => (
-                  <TableRow key={shipment.id}>
+                {Array.isArray(shipments) && shipments.map((shipment, index) => (
+                  <TableRow key={`${shipment.id}-${shipment.tracking_code || index}`}>
                     <TableCell className="font-medium">SH-{shipment.id}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">

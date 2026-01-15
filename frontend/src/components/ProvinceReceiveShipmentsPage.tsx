@@ -84,33 +84,28 @@ export function ProvinceReceiveShipmentsPage() {
     try {
       setLoading(true);
       
-      // Get shipments coming to this province from ministry
-      // We want shipments where from_ministry is not null and to_province matches
-      const params: any = {};
-      if (typeof user?.province === 'number') {
-        params.to_province = user.province;
-      }
+      const response = await api.get('/warehouses/shipments/');
+      const responseData = response.data.results || response.data || [];
+      
+      // Filter to show only ministry-to-province shipments coming to this user's province
+      const userProvince = user?.province; // This is a string like "أمانة العاصمة"
+      
+      const filteredShipments = (Array.isArray(responseData) ? responseData : []).filter((s: any) => {
+        // Only ministry-to-province shipments (type or shipment_type)
+        const isMinistryToProvince = s.type === 'ministry_to_province' || s.shipment_type === 'ministry_to_province';
+        
+        // Check if destination matches user's province
+        const destinationMatches = s.to_location === userProvince || 
+                                    s.to_province === userProvince ||
+                                    s.to_province?.province === userProvince;
+        
+        return isMinistryToProvince && destinationMatches;
+      });
 
-      const response = await api.get('/warehouses/shipments/', { params });
-      let data = response.data.results || response.data || [];
-
-      // Filter to show only ministry-to-province shipments
-      // and filter by province name if needed
-      if (typeof user?.province !== 'number' && user?.province_name) {
-        const pname = user.province_name;
-        data = (Array.isArray(data) ? data : []).filter((s: any) => {
-          const hasMinistrySource = s.from_ministry || s.from_warehouse?.ministry;
-          const matchesProvince = s.to_province?.province === pname || s.to_province?.name === pname || s.to_province === pname;
-          return hasMinistrySource && matchesProvince;
-        });
-      } else {
-        // Filter to show only ministry shipments
-        data = (Array.isArray(data) ? data : []).filter((s: any) => {
-          return s.from_ministry || s.from_warehouse?.ministry;
-        });
-      }
-
-      setShipments(Array.isArray(data) ? data : []);
+      console.log('📦 Total shipments from API:', responseData.length);
+      console.log('🎯 Filtered for province', userProvince, ':', filteredShipments.length);
+      
+      setShipments(filteredShipments);
     } catch (error) {
       console.error('Error fetching shipments:', error);
       setShipments([]);
@@ -557,7 +552,7 @@ export function ProvinceReceiveShipmentsPage() {
                         key={idx}
                         className="flex justify-between items-center p-3 bg-gray-50 rounded border"
                       >
-                        <span className="flex-1">{book.book_title}</span>
+                        <span className="flex-1">{book.title || book.book_title || 'كتاب'}</span>
                         <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded font-semibold">
                           {book.quantity}
                         </span>
@@ -572,7 +567,7 @@ export function ProvinceReceiveShipmentsPage() {
                 <Button
                   variant="outline"
                   className="flex-1"
-                  onClick={() => window.open(`http://localhost:8000/api/warehouses/shipments/${selectedShipment.id}/qr/`, '_blank')}
+                  onClick={() => window.open(`http://45.77.65.134/api/warehouses/shipments/${selectedShipment.id}/qr/`, '_blank')}
                 >
                   <QrCode className="w-4 h-4 ml-2" />
                   عرض QR Code
@@ -580,7 +575,7 @@ export function ProvinceReceiveShipmentsPage() {
                 <Button
                   variant="outline"
                   className="flex-1"
-                  onClick={() => window.open(`http://localhost:8000/api/warehouses/shipments/${selectedShipment.id}/report/`, '_blank')}
+                  onClick={() => window.open(`http://45.77.65.134/api/warehouses/shipments/${selectedShipment.id}/report/`, '_blank')}
                 >
                   <Download className="w-4 h-4 ml-2" />
                   تحميل التقرير PDF

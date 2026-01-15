@@ -97,16 +97,18 @@ def generate_ministry_statistics_excel(request):
     """توليد تقرير Excel لإحصائيات الوزارة"""
     try:
         # جمع الإحصائيات
+        total_ministry_shipments = MinistryToProvinceShipment.objects.count()
+        total_province_shipments = ProvinceToSchoolShipment.objects.count()
+        
         stats = {
             'total_provinces': Province.objects.count(),
             'total_schools': School.objects.count(),
             'total_books': WarehouseStock.objects.aggregate(total=Sum('quantity'))['total'] or 0,
-            'total_shipments': Shipment.objects.count(),
+            'total_shipments': total_ministry_shipments + total_province_shipments,
             'total_warehouses': MinistryWarehouse.objects.count() + ProvinceWarehouse.objects.count(),
             'total_drivers': User.objects.filter(role__in=['ministry_driver', 'province_driver']).count(),
-            'shipments_by_status': dict(
-                Shipment.objects.values('status').annotate(count=Count('id')).values_list('status', 'count')
-            )
+            'ministry_shipments': total_ministry_shipments,
+            'province_shipments': total_province_shipments,
         }
         
         # توليد التقرير
@@ -169,7 +171,7 @@ def generate_province_statistics_excel(request):
             'warehouses_count': ProvinceWarehouse.objects.filter(province=province.name).count(),
             'schools_count': School.objects.filter(province__name=province.name).count(),
             'drivers_count': User.objects.filter(role='province_driver', province=province.name).count(),
-            'incoming_shipments': MinistryToProvinceShipment.objects.filter(to_warehouse__province=province.name).count(),
+            'incoming_shipments': MinistryToProvinceShipment.objects.filter(to_province__province=province.name).count(),
             'distributed_shipments': ProvinceToSchoolShipment.objects.filter(
                 from_province__province=province.name,
                 status='delivered'
@@ -286,29 +288,57 @@ def generate_shipments_excel(request):
         status_filter = request.data.get('status')
         from_date = request.data.get('from_date')
         to_date = request.data.get('to_date')
+        shipment_type = request.data.get('shipment_type', 'all')  # 'ministry', 'province', or 'all'
         
-        shipments = Shipment.objects.select_related(
-            'from_ministry', 'to_province', 'assigned_courier'
-        ).all()
-        
-        if status_filter:
-            shipments = shipments.filter(status=status_filter)
-        if from_date:
-            shipments = shipments.filter(created_at__gte=from_date)
-        if to_date:
-            shipments = shipments.filter(created_at__lte=to_date)
-        
-        # تحضير البيانات
         shipments_data = []
-        for shipment in shipments[:1000]:  # حد أقصى 1000 شحنة
-            shipments_data.append({
-                'tracking_code': shipment.tracking_code,
-                'from_name': shipment.from_ministry.name if shipment.from_ministry else '-',
-                'to_name': shipment.to_province.name if shipment.to_province else '-',
-                'courier_name': shipment.assigned_courier.full_name if shipment.assigned_courier else 'غير مُسند',
-                'status_display': shipment.get_status_display(),
-                'created_at': shipment.created_at.strftime('%Y-%m-%d')
-            })
+        
+        # جمع شحنات الوزارة → المحافظة
+        if shipment_type in ['ministry', 'all']:
+            ministry_shipments = MinistryToProvinceShipment.objects.select_related(
+                'from_ministry', 'to_province', 'assigned_courier'
+            ).all()
+            
+            if status_filter:
+                ministry_shipments = ministry_shipments.filter(status=status_filter)
+            if from_date:
+                ministry_shipments = ministry_shipments.filter(created_at__gte=from_date)
+            if to_date:
+                ministry_shipments = ministry_shipments.filter(created_at__lte=to_date)
+            
+            for shipment in ministry_shipments[:500]:
+                shipments_data.append({
+                    'tracking_code': shipment.tracking_code,
+                    'type': 'وزارة → محافظة',
+                    'from_name': shipment.from_ministry.name if shipment.from_ministry else '-',
+                    'to_name': shipment.to_province.province if shipment.to_province else '-',
+                    'courier_name': shipment.assigned_courier.full_name if shipment.assigned_courier else 'غير مُسند',
+                    'status_display': shipment.get_status_display(),
+                    'created_at': shipment.created_at.strftime('%Y-%m-%d')
+                })
+        
+        # جمع شحنات المحافظة → المدرسة
+        if shipment_type in ['province', 'all']:
+            province_shipments = ProvinceToSchoolShipment.objects.select_related(
+                'from_province', 'to_school', 'assigned_courier'
+            ).all()
+            
+            if status_filter:
+                province_shipments = province_shipments.filter(status=status_filter)
+            if from_date:
+                province_shipments = province_shipments.filter(created_at__gte=from_date)
+            if to_date:
+                province_shipments = province_shipments.filter(created_at__lte=to_date)
+            
+            for shipment in province_shipments[:500]:
+                shipments_data.append({
+                    'tracking_code': shipment.tracking_code,
+                    'type': 'محافظة → مدرسة',
+                    'from_name': shipment.from_province.name if shipment.from_province else '-',
+                    'to_name': shipment.to_school.name if shipment.to_school else '-',
+                    'courier_name': shipment.assigned_courier.full_name if shipment.assigned_courier else 'غير مُسند',
+                    'status_display': shipment.get_status_display(),
+                    'created_at': shipment.created_at.strftime('%Y-%m-%d')
+                })
         
         # توليد التقرير
         generator = ExcelReportGenerator()

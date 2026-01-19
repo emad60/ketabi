@@ -81,17 +81,21 @@ interface ShipmentType {
 }
 
 interface Stats {
-  total_shipments: number;
-  shipments_by_status: {
-    pending: number;
-    assigned: number;
-    out_for_delivery: number;
-    delivered: number;
-    confirmed: number;
-    canceled: number;
+  shipments: {
+    total: number;
+    by_status: {
+      pending: number;
+      assigned: number;
+      out_for_delivery: number;
+      delivered: number;
+      confirmed: number;
+      canceled: number;
+    };
   };
-  active_couriers: number;
-  total_couriers: number;
+  couriers: {
+    total_ministry_couriers: number;
+    active_couriers: number;
+  };
 }
 
 export function MinistryShipmentManagementPage() {
@@ -164,9 +168,9 @@ export function MinistryShipmentManagementPage() {
     try {
       setLoading(true);
       
-      // Fetch shipments via shipmentService
+      // Fetch shipments via shipmentService - only ministry_to_province type for ministry page
       try {
-        const shipmentsData = await shipmentService.getShipments({ page_size: 100 });
+        const shipmentsData = await shipmentService.getShipments({ page_size: 100, shipment_type: 'ministry_to_province' });
         // shipmentService returns array or paginated response depending on backend
         const sData = Array.isArray(shipmentsData) ? shipmentsData : (shipmentsData.results || shipmentsData);
         const shipmentsArray = Array.isArray(sData) ? sData : [];
@@ -264,14 +268,14 @@ export function MinistryShipmentManagementPage() {
   };
 
   // Chart data
-  const statusChartData = stats && stats.shipments_by_status
+  const statusChartData = stats && stats.shipments?.by_status
     ? [
-        { name: 'قيد الإنشاء', value: stats.shipments_by_status.pending || 0, color: '#FCD34D' },
-        { name: 'مُسندة', value: stats.shipments_by_status.assigned || 0, color: '#A78BFA' },
-        { name: 'قيد التوصيل', value: stats.shipments_by_status.out_for_delivery || 0, color: '#60A5FA' },
-        { name: 'تم التسليم', value: stats.shipments_by_status.delivered || 0, color: '#34D399' },
-        { name: 'مؤكدة', value: stats.shipments_by_status.confirmed || 0, color: '#10B981' },
-        { name: 'ملغاة', value: stats.shipments_by_status.canceled || 0, color: '#EF4444' },
+        { name: 'قيد الإنشاء', value: stats.shipments.by_status.pending || 0, color: '#FCD34D' },
+        { name: 'مُسندة', value: stats.shipments.by_status.assigned || 0, color: '#A78BFA' },
+        { name: 'قيد التوصيل', value: stats.shipments.by_status.out_for_delivery || 0, color: '#60A5FA' },
+        { name: 'تم التسليم', value: stats.shipments.by_status.delivered || 0, color: '#34D399' },
+        { name: 'مؤكدة', value: stats.shipments.by_status.confirmed || 0, color: '#10B981' },
+        { name: 'ملغاة', value: stats.shipments.by_status.canceled || 0, color: '#EF4444' },
       ]
     : [];
 
@@ -304,7 +308,7 @@ export function MinistryShipmentManagementPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600 mb-2">إجمالي الشحنات</p>
-                <p className="text-3xl font-bold">{stats?.total_shipments || 0}</p>
+                <p className="text-3xl font-bold">{stats?.shipments?.total || 0}</p>
               </div>
               <div className="bg-blue-500 p-3 rounded-lg">
                 <Package className="w-6 h-6 text-white" />
@@ -318,7 +322,7 @@ export function MinistryShipmentManagementPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600 mb-2">قيد التوصيل</p>
-                <p className="text-3xl font-bold">{stats?.shipments_by_status?.out_for_delivery || 0}</p>
+                <p className="text-3xl font-bold">{stats?.shipments?.by_status?.out_for_delivery || 0}</p>
               </div>
               <div className="bg-blue-500 p-3 rounded-lg">
                 <Truck className="w-6 h-6 text-white" />
@@ -333,7 +337,7 @@ export function MinistryShipmentManagementPage() {
               <div>
                 <p className="text-sm text-gray-600 mb-2">تم التسليم</p>
                 <p className="text-3xl font-bold">
-                  {(stats?.shipments_by_status?.delivered || 0) + (stats?.shipments_by_status?.confirmed || 0)}
+                  {(stats?.shipments?.by_status?.delivered || 0) + (stats?.shipments?.by_status?.confirmed || 0)}
                 </p>
               </div>
               <div className="bg-green-500 p-3 rounded-lg">
@@ -349,7 +353,7 @@ export function MinistryShipmentManagementPage() {
               <div>
                 <p className="text-sm text-gray-600 mb-2">المندوبين النشطين</p>
                 <p className="text-3xl font-bold">
-                  {stats?.active_couriers || 0} / {stats?.total_couriers || 0}
+                  {stats?.couriers?.active_couriers || 0} / {stats?.couriers?.total_ministry_couriers || 0}
                 </p>
               </div>
               <div className="bg-orange-500 p-3 rounded-lg">

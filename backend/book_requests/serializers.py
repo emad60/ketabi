@@ -107,11 +107,8 @@ class BookRequestSerializer(serializers.ModelSerializer):
     
     def get_has_shipment(self, obj):
         """Check if this request has any shipments created from it"""
-        # Check if any MinistryToProvinceShipment references this request
-        from warehouses.models import MinistryToProvinceShipment
-        return MinistryToProvinceShipment.objects.filter(
-            books__contains=[{'request_id': obj.id}]
-        ).exists() or False
+        # Check if any MinistryToProvinceShipment references this request via foreign key
+        return obj.ministry_shipments.exists()
     
     def get_province_name(self, obj):
         user = getattr(obj, 'created_by', None)

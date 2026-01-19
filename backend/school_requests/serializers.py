@@ -40,6 +40,9 @@ class SchoolRequestSerializer(serializers.ModelSerializer):
     
     # إجمالي الكمية
     total_quantity = serializers.SerializerMethodField(read_only=True)
+    
+    # هل يوجد شحنة لهذا الطلب؟
+    has_shipment = serializers.SerializerMethodField(read_only=True)
 
     created_by_name = serializers.CharField(source="created_by.username", read_only=True)
     reviewed_by_name = serializers.CharField(source="reviewed_by.username", read_only=True)
@@ -57,12 +60,17 @@ class SchoolRequestSerializer(serializers.ModelSerializer):
             "items",          # write-only
             "items_readonly", # read-only
             "total_quantity",
+            "has_shipment",
         ]
-        read_only_fields = ["created_at", "updated_at", "total_quantity"]
+        read_only_fields = ["created_at", "updated_at", "total_quantity", "has_shipment"]
 
     def get_total_quantity(self, obj):
         """حساب إجمالي الكمية من جميع العناصر"""
         return sum(item.quantity for item in obj.items.all())
+    
+    def get_has_shipment(self, obj):
+        """Check if this request has any shipments created from it"""
+        return obj.province_shipments.exists()
 
     def validate(self, attrs):
         # لو أرسل status=rejected لازم سبب

@@ -78,8 +78,8 @@ export default function MinistryProvinceShipmentsPage() {
       setShowCreateDialog(false);
       setSelectedRequest(null);
       setFormData({ courier_id: '', notes: '' });
-      // Navigate to shipment details
-      navigate(`/shipments/${shipment.id}`);
+      // Navigate to shipment details with type parameter
+      navigate(`/shipments/${shipment.id}?type=ministry_to_province`);
     },
     onError: (error: any) => {
       console.error('Error creating shipment:', error);

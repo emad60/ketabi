@@ -64,8 +64,10 @@ export function ProvinceShipmentManagementPage() {
     try {
       setLoading(true);
       
-      // Fetch shipments (filter for province)
-      const shipmentsRes = await api.get('/warehouses/shipments/');
+      // Fetch shipments (filter for province - only province_to_school type)
+      const shipmentsRes = await api.get('/warehouses/shipments/', {
+        params: { shipment_type: 'province_to_school' }
+      });
       const shipmentsData = shipmentsRes.data.results || shipmentsRes.data;
       setShipments(Array.isArray(shipmentsData) ? shipmentsData : []);
 

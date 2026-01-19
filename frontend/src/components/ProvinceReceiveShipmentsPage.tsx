@@ -439,10 +439,10 @@ export function ProvinceReceiveShipmentsPage() {
               />
             </div>
 
-            {/* Warning */}
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-              <p className="text-sm text-yellow-800 text-right">
-                ⚠️ بعد التأكيد، سيتم خصم الكتب من مخزون الوزارة وإضافتها لمخزون المحافظة
+            {/* Info */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="text-sm text-blue-800 text-right">
+                ℹ️ بعد التأكيد، سيتم تحديث حالة الشحنة إلى "مستلمة" وتسجيل بيانات الاستلام
               </p>
             </div>
           </div>

@@ -5,18 +5,113 @@
 
 ## 📋 جدول المحتويات
 
-1. [ERD - Entity Relationship Diagram](#erd)
-2. [Class Diagram](#class-diagram)
-3. [Use Case Diagram](#use-cases)
-4. [Sequence Diagrams](#sequence-diagrams)
-5. [Activity Diagrams](#activity-diagrams)
+### الأقسام الرئيسية
+1. [📊 العمليات الحالية](#current-operations) - ملخص الميزات المُنجزة
+2. [🗄️ ERD - Entity Relationship Diagram](#erd) - نموذج العلاقات بين الكائنات
+3. [🏗️ Class Diagram](#class-diagram) - هيكل الفئات والعلاقات
+4. [👥 Use Case Diagram](#use-cases) - حالات الاستخدام
+5. [🔄 Sequence Diagrams](#sequence-diagrams) - سيناريوهات العمليات
+6. [📊 Activity Diagrams](#activity-diagrams) - تدفقات العمليات
+7. [📝 ملاحظات تحديث الملف](#update-notes) - معلومات التحديث والـ APIs
+
+### أقسام العمليات الحالية (Current Operations)
+- [نظام طلبات المدارس](#school-requests)
+- [نظام الشحنات](#shipments)
+- [نظام إنشاء الشحنات من الطلبات](#shipment-creation)
+- [نظام المندوبين](#couriers)
+- [نظام المخزون](#warehouse-stock)
+- [نظام الإشعارات](#notifications)
+
+### أقسام Sequence Diagrams
+- [1. إنشاء طلب مدرسة واعتماده](#seq-1)
+- [2. إنشاء شحنة من طلب المدرسة المعتمد](#seq-2)
+- [3. توصيل الشحنة من قبل المندوب](#seq-3)
+- [4. طلب المحافظة من الوزارة](#seq-4)
+- [5. نظام الإشعارات والـ Push Notifications](#seq-5)
+
+### أقسام Activity Diagrams
+- [1. سير عمل طلب المدرسة](#activity-1)
+- [2. سير عمل طلب المحافظة من الوزارة](#activity-2)
+- [3. سير عمل المندوب (Courier Workflow)](#activity-3)
+- [4. سير عمل نظام الإشعارات](#activity-4)
+- [5. إدارة المخزون والتنبيهات](#activity-5)
+
+---
+
+## � العمليات الحالية {#current-operations}
+
+### ✅ الميزات المُنجزة والمستخدمة
+
+#### 1️⃣ نظام طلبات المدارس (School Requests) {#school-requests}
+- **الحالات المدعومة:** draft, submitted, approved, rejected, fulfilled, cancelled
+- **العمليات:**
+  - إنشاء طلب من قبل موظف المدرسة
+  - مراجعة واعتماد من قبل موظف المحافظة
+  - التحقق من المخزون قبل الموافقة
+  - إنشاء شحنات مباشرة من الطلب المعتمد
+
+#### 2️⃣ نظام الشحنات (Shipments) {#shipments}
+- **نوعا الشحنات:**
+  - `MinistryToProvinceShipment` - من الوزارة للمحافظة
+  - `ProvinceToSchoolShipment` - من المحافظة للمدرسة
+  
+- **حقول الشحنة:**
+  - `tracking_code` - كود التتبع الفريد
+  - `qr_token` - رمز QR للتحقق
+  - `qr_code_image` - صورة QR Code
+  - `status` - حالة الشحنة (pending, assigned, out_for_delivery, delivered)
+  - `related_school_request` - ربط بطلب المدرسة الأصلي
+  - `delivered_at` - تاريخ التسليم الفعلي
+  - `delivery_notes` - ملاحظات التسليم
+
+#### 3️⃣ نظام إنشاء الشحنات من الطلبات {#shipment-creation}
+- **الوظيفة:** إنشاء شحنات مباشرة من طلبات المدارس المعتمدة
+- **الخطوات:**
+  1. جلب الطلبات المعتمدة: `GET /warehouses/province/school-requests/approved/`
+  2. اختيار المندوب والطلب
+  3. إنشاء الشحنة: `POST /warehouses/province/shipments/create-from-request/`
+  4. خصم المخزون تلقائياً
+  5. إنشاء QR Code ورمز التتبع
+
+#### 4️⃣ نظام المندوبين (Couriers/Drivers) {#couriers}
+- **الأدوار:**
+  - `province_driver` - مندوب المحافظة
+  - `ministry_driver` - مندوب الوزارة
+  
+- **العمليات:**
+  - عرض الشحنات المسندة
+  - بدء التوصيل
+  - مسح QR Code عند الوصول
+  - تأكيد التسليم مع التوقيع
+  - رفع الصور والملاحظات
+
+#### 5️⃣ نظام المخزون (Warehouse Stock) {#warehouse-stock}
+- **حقول المخزون:**
+  - `ministry_warehouse_id` - للمخزن المركزي
+  - `province_warehouse_id` - لمخزن المحافظة
+  - `book_id` - الكتاب
+  - `term` - الفصل الدراسي
+  - `quantity` - الكمية المتوفرة
+  - `min_threshold` - الحد الأدنى للكمية
+
+#### 6️⃣ نظام الإشعارات {#notifications}
+- **أنواع الإشعارات:**
+  - `school_request_created` - طلب مدرسة جديد
+  - `school_request_approved` - موافقة على طلب
+  - `school_request_rejected` - رفض طلب
+  - `shipment_created` - شحنة جديدة
+  - `shipment_assigned` - تعيين مندوب
+  - `shipment_out_for_delivery` - شحنة قيد التوصيل
+  - `shipment_delivered` - شحنة تم تسليمها
+  - `low_stock_alert` - تنبيه مخزون منخفض
+
+- **الآلية:** Firebase Cloud Messaging (FCM) + WebSocket للتحديثات المباشرة
 
 ---
 
 ## 🗄️ ERD - Entity Relationship Diagram {#erd}
 
 ```mermaid
-erDiagram
     User ||--o{ Notification : "receives"
     User ||--o{ DeviceToken : "owns"
     User ||--o{ BookRequest : "creates"
@@ -665,7 +760,7 @@ graph TB
 
 ## 🔄 Sequence Diagrams {#sequence-diagrams}
 
-### 1. إنشاء طلب مدرسة واعتماده
+### 1. إنشاء طلب مدرسة واعتماده {#seq-1}
 
 ```mermaid
 sequenceDiagram
@@ -708,45 +803,70 @@ sequenceDiagram
     Mobile-->>Province: عرض تأكيد الاعتماد
 ```
 
-### 2. إنشاء شحنة وتوصيلها
+### 2️⃣ إنشاء شحنة من طلب المدرسة المعتمد (الواقع الحالي) {#seq-2}
 
 ```mermaid
 sequenceDiagram
-    actor Province as موظف المحافظة
-    participant Web as لوحة التحكم
+    actor ProvinceStaff as موظف المحافظة
+    participant Web as لوحة التحكم الويب
     participant API as Backend API
     participant DB as قاعدة البيانات
-    participant Inventory as InventoryService
+    participant Warehouse as نظام المخزون
     participant Notify as NotificationService
     actor Courier as المندوب
-    participant Mobile as تطبيق الموبايل
     actor School as موظف المدرسة
     
-    Province->>Web: إنشاء شحنة من طلب
-    Web->>API: POST /warehouses/create-shipment-from-school-request/
-    API->>DB: استعلام SchoolRequest
+    ProvinceStaff->>Web: فتح صفحة إنشاء شحنة من طلب
+    Web->>API: GET /warehouses/province/school-requests/approved/
+    API->>DB: استعلام SchoolRequest مع status='approved'
+    DB-->>API: قائمة الطلبات المعتمدة
+    API-->>Web: 200 OK + Requests Data
+    Web-->>ProvinceStaff: عرض قائمة الطلبات
+    
+    ProvinceStaff->>Web: اختيار طلب ومندوب
+    Web->>API: POST /warehouses/province/shipments/create-from-request/
+    Note over API: البيانات: school_request_id, courier_id, notes
+    
+    API->>DB: استعلام SchoolRequest مع items
     DB-->>API: Request Details + Items
     
-    API->>Inventory: deduct_inventory_for_shipment()
-    Inventory->>DB: خصم الكمية من WarehouseStock
-    DB-->>Inventory: OK
-    Inventory-->>API: Deduction Successful
+    API->>Warehouse: التحقق من توفر المخزون
+    Warehouse->>DB: استعلام WarehouseStock
+    DB-->>Warehouse: Available Stock
+    Warehouse-->>API: Stock OK
     
-    API->>DB: إنشاء Shipment
-    API->>DB: generate QR Code
+    API->>DB: خصم الكمية من WarehouseStock
+    DB-->>API: Stock Updated
+    
+    API->>DB: إنشاء ProvinceToSchoolShipment
+    API->>DB: إنشاء QR Token + QR Code Image
     DB-->>API: Shipment Created
     
     API->>Notify: notify_shipment_created()
-    Notify->>DB: إنشاء إشعارات للمندوب والمدرسة
-    Notify-->>Courier: Push Notification
-    Notify-->>School: Push Notification
+    Notify->>DB: إنشاء Notification للمندوب والمدرسة
+    Notify-->>Courier: إرسال Push Notification
+    Notify-->>School: إرسال Push Notification
     
     API-->>Web: 201 Created + Shipment Details
-    Web-->>Province: عرض تفاصيل الشحنة
+    Web-->>ProvinceStaff: تأكيد الإنشاء + تفاصيل الشحنة
+    
+    Note over Courier,School: الخطوة التالية: المندوب يبدأ التوصيل
+```
+
+### 3️⃣ توصيل الشحنة من قبل المندوب {#seq-3}
+
+```mermaid
+sequenceDiagram
+    actor Courier as المندوب
+    participant Mobile as تطبيق الموبايل
+    participant API as Backend API
+    participant DB as قاعدة البيانات
+    participant Notify as NotificationService
+    actor School as موظف/طالب المدرسة
     
     Courier->>Mobile: عرض الشحنات المسندة
     Mobile->>API: GET /warehouses/shipments/?status=assigned
-    API->>DB: استعلام Shipments
+    API->>DB: استعلام ProvinceToSchoolShipment
     DB-->>API: Shipments List
     API-->>Mobile: 200 OK + Shipments
     
@@ -754,28 +874,34 @@ sequenceDiagram
     Mobile->>API: POST /warehouses/shipments/{id}/start-delivery/
     API->>DB: تحديث status = 'out_for_delivery'
     API->>Notify: notify_shipment_out_for_delivery()
-    Notify-->>School: Push Notification
+    Notify-->>School: إرسال Push Notification
     API-->>Mobile: 200 OK
+    Mobile-->>Courier: عرض بدء التوصيل
     
-    Courier->>Mobile: مسح QR Code عند المدرسة
+    Courier->>Mobile: الوصول للمدرسة ومسح QR Code
     Mobile->>API: POST /warehouses/scan-qr/
-    API->>DB: التحقق من qr_token
+    API->>DB: التحقق من qr_token والصلاحية
     DB-->>API: Shipment Validated
     API-->>Mobile: Shipment Details
     
-    Courier->>Mobile: تأكيد التسليم + توقيع + صورة
+    Courier->>Mobile: تأكيد التسليم + جمع التوقيع
     Mobile->>API: POST /warehouses/confirm-delivery/{id}/
+    Note over Mobile,API: البيانات: signature, delivery_photo, recipient_name, notes
+    
     API->>DB: تحديث status = 'delivered'
-    API->>DB: حفظ التوقيع والصورة
+    API->>DB: حفظ التوقيع والصور والملاحظات
+    API->>DB: تحديث delivered_at
+    
     API->>Notify: notify_shipment_delivered()
     Notify->>DB: إنشاء إشعارات للجميع
-    Notify-->>Province: Push Notification
-    Notify-->>School: Push Notification
+    Notify-->>School: إشعار بالتسليم
+    Notify-->>Courier: تأكيد التسليم
+    
     API-->>Mobile: 200 OK
-    Mobile-->>Courier: عرض تأكيد التسليم
+    Mobile-->>Courier: عرض تأكيد التسليم الكامل
 ```
 
-### 3. طلب المحافظة من الوزارة
+### 4️⃣ طلب المحافظة من الوزارة (Book Request) {#seq-4}
 
 ```mermaid
 sequenceDiagram
@@ -822,7 +948,7 @@ sequenceDiagram
     API-->>Web: 201 Created
 ```
 
-### 4. نظام الإشعارات والـ Push Notifications
+### 5️⃣ نظام الإشعارات والـ Push Notifications {#seq-5}
 
 ```mermaid
 sequenceDiagram
@@ -869,7 +995,7 @@ sequenceDiagram
 
 ## 📊 Activity Diagrams {#activity-diagrams}
 
-### 1. سير عمل طلب المدرسة
+### 1️⃣ سير عمل طلب المدرسة {#activity-1}
 
 ```mermaid
 flowchart TD
@@ -925,7 +1051,7 @@ flowchart TD
     style CreateShipment fill:#87CEEB
 ```
 
-### 2. سير عمل طلب المحافظة من الوزارة
+### 2️⃣ سير عمل طلب المحافظة من الوزارة {#activity-2}
 
 ```mermaid
 flowchart TD
@@ -989,7 +1115,7 @@ flowchart TD
     style AddToProvinceStock fill:#87CEEB
 ```
 
-### 3. سير عمل المندوب (Courier Workflow)
+### 3️⃣ سير عمل المندوب (Courier Workflow) {#activity-3}
 
 ```mermaid
 flowchart TD
@@ -1080,7 +1206,7 @@ flowchart TD
     style ConfirmDelivery fill:#87CEEB
 ```
 
-### 4. سير عمل نظام الإشعارات
+### 4️⃣ سير عمل نظام الإشعارات {#activity-4}
 
 ```mermaid
 flowchart TD
@@ -1165,7 +1291,7 @@ flowchart TD
     style LogSuccess fill:#90EE90
 ```
 
-### 5. إدارة المخزون والتنبيهات
+### 5️⃣ إدارة المخزون والتنبيهات {#activity-5}
 
 ```mermaid
 flowchart TD
@@ -1262,4 +1388,54 @@ flowchart TD
 
 ---
 
-## تابع في الصفحة التالية...
+## 📝 ملاحظات تحديث الملف {#update-notes}
+
+### آخر تحديث: 17 يناير 2026
+
+#### ✅ الميزات المُنجزة والمستخدمة:
+1. **نظام طلبات المدارس الكامل** - مع جميع الحالات والتحويلات
+2. **نظام إنشاء الشحنات من الطلبات** - مباشرة من طلبات المدارس المعتمدة
+3. **نظام الشحنات (Ministry ↔ Province ↔ School)**
+4. **نظام المندوبين والتوصيل** - مع QR Code والتوقيع الرقمي
+5. **نظام الإشعارات** - Firebase FCM + WebSocket
+6. **نظام المخزون** - مع التنبيهات التلقائية
+7. **لوحة التحكم الويب** - لموظفي المحافظة والوزارة
+8. **تطبيق الموبايل** - للمندوبين والمدارس (Flutter)
+
+#### 📊 ملخص الحقول والعلاقات:
+
+**ProvinceToSchoolShipment:**
+- `tracking_code` - كود التتبع الفريد
+- `qr_token` + `qr_code_image` - رمز QR والصورة
+- `status` - pending, assigned, out_for_delivery, delivered
+- `related_school_request` - ربط بالطلب الأصلي ✅ **جديد**
+- `delivered_at` - تاريخ التسليم الفعلي
+- `delivery_notes` - ملاحظات التسليم
+
+**WarehouseStock:**
+- دعم المخزن المركزي والمحافظة معاً
+- Automatic deduction on shipment creation ✅
+- Low stock alerts ✅
+
+#### 🔌 API Endpoints الرئيسية:
+
+**School Requests:**
+- `GET /school-requests/` - عرض الطلبات
+- `POST /school-requests/` - إنشاء طلب
+- `GET /school-requests/{id}/approve/` - اعتماد الطلب
+
+**Shipments (Province):**
+- `GET /warehouses/province/school-requests/approved/` - الطلبات المعتمدة
+- `POST /warehouses/province/shipments/create-from-request/` - إنشاء شحنة
+
+**Shipment Management:**
+- `POST /warehouses/shipments/{id}/start-delivery/` - بدء التوصيل
+- `POST /warehouses/scan-qr/` - مسح QR Code
+- `POST /warehouses/confirm-delivery/{id}/` - تأكيد التسليم
+
+**Notifications:**
+- `POST /notifications/register-device-token/` - تسجيل جهاز
+- `GET /notifications/` - عرض الإشعارات
+- `POST /notifications/{id}/mark_read/` - قراءة الإشعار
+
+---

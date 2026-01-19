@@ -146,7 +146,7 @@ export default function ProvinceShipmentPage() {
     queryFn: async () => {
       const response = await apiService.getShipments({
         status: filterStatus === 'all' ? undefined : filterStatus,
-        // تم حذف courier_role ليتم عرض جميع الشحنات
+        shipment_type: 'province_to_school',  // Only show province to school shipments
       });
       return Array.isArray(response) ? response : (response as any).results || [];
     },

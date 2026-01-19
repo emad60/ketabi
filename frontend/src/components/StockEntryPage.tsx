@@ -39,7 +39,9 @@ interface Book {
   subject_display: string;
   grade_level: string;
   grade_display: string;
-  term?: string;
+  term?: number;  // 1 = first, 2 = second
+  term_name?: string;
+  term_display?: string;
 }
 
 interface Warehouse {
@@ -285,12 +287,28 @@ export function StockEntryPage({ warehouseType }: StockEntryPageProps) {
     }
   };
 
-  const getCurrentQuantity = (bookId: number, term?: string) => {
+  // Helper to convert book term number to stock term string
+  const getTermString = (term?: number): string | undefined => {
+    if (term === 1) return 'first';
+    if (term === 2) return 'second';
+    return undefined;
+  };
+
+  // Helper to get term display text in Arabic
+  const getTermDisplay = (term?: number, term_display?: string): string => {
+    if (term_display) return term_display;
+    if (term === 1) return 'الأول';
+    if (term === 2) return 'الثاني';
+    return 'غير محدد';
+  };
+
+  const getCurrentQuantity = (bookId: number, term?: number): number => {
+    const termString = getTermString(term);
     // إذا كان هناك مخزن محدد، عرض المخزون لهذا المخزن فقط
     if (selectedWarehouse) {
       const stock = currentStock.find(s => {
         const matchBook = s.book === bookId || s.book?.id === bookId;
-        const matchTerm = !term || s.term === term;
+        const matchTerm = !termString || s.term === termString;
         return matchBook && matchTerm;
       });
       return stock?.quantity || 0;
@@ -298,7 +316,7 @@ export function StockEntryPage({ warehouseType }: StockEntryPageProps) {
     // إذا لم يكن هناك مخزن محدد، عرض المجموع من جميع المخازن
     const stocks = currentStock.filter(s => {
       const matchBook = s.book === bookId || s.book?.id === bookId;
-      const matchTerm = !term || s.term === term;
+      const matchTerm = !termString || s.term === termString;
       return matchBook && matchTerm;
     });
     return stocks.reduce((sum, s) => sum + (s.quantity || 0), 0);
@@ -432,7 +450,7 @@ export function StockEntryPage({ warehouseType }: StockEntryPageProps) {
                               <TableCell>{book.grade_display}</TableCell>
                               <TableCell>
                                 <Badge variant="secondary">
-                                  {book.term === 'first' ? 'الأول' : book.term === 'second' ? 'الثاني' : 'غير محدد'}
+                                  {getTermDisplay(book.term, book.term_display)}
                                 </Badge>
                               </TableCell>
                               <TableCell>

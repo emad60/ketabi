@@ -55,6 +55,8 @@ from .mobile_views import (
     driver_upload_signature,
     driver_update_location,
     driver_performance_stats,
+    # Province APIs
+    province_receive_shipment,
     # School APIs
     school_receive_delivery,
 )
@@ -69,20 +71,39 @@ from .report_upload_views import (
 )
 
 # Import Excel report views
-from .excel_views import (
-    ExcelReportViewSet,
-    generate_ministry_statistics_excel,
-    generate_province_statistics_excel,
-    generate_warehouse_stock_excel,
-    generate_shipments_excel,
-)
+try:
+    from .excel_views import (
+        ExcelReportViewSet,
+        generate_ministry_statistics_excel,
+        generate_province_statistics_excel,
+        generate_warehouse_stock_excel,
+        generate_shipments_excel,
+    )
+    EXCEL_VIEWS_AVAILABLE = True
+except (ImportError, ModuleNotFoundError):
+    EXCEL_VIEWS_AVAILABLE = False
+    # Define dummy functions to prevent NameError
+    def generate_ministry_statistics_excel(request):
+        from django.http import JsonResponse
+        return JsonResponse({'error': 'Excel export not available'}, status=503)
+    def generate_province_statistics_excel(request):
+        from django.http import JsonResponse
+        return JsonResponse({'error': 'Excel export not available'}, status=503)
+    def generate_warehouse_stock_excel(request):
+        from django.http import JsonResponse
+        return JsonResponse({'error': 'Excel export not available'}, status=503)
+    def generate_shipments_excel(request):
+        from django.http import JsonResponse
+        return JsonResponse({'error': 'Excel export not available'}, status=503)
+    ExcelReportViewSet = None
 
 # Router for ViewSets
 router = DefaultRouter()
 router.register(r'ministry-shipments', MinistryToProvinceShipmentViewSet, basename='ministry-shipment')
 router.register(r'province-shipments', ProvinceToSchoolShipmentViewSet, basename='province-shipment')
 router.register(r'uploaded-reports', UploadedReportViewSet, basename='uploaded-report')
-router.register(r'excel-reports', ExcelReportViewSet, basename='excel-report')
+if EXCEL_VIEWS_AVAILABLE:
+    router.register(r'excel-reports', ExcelReportViewSet, basename='excel-report')
 
 urlpatterns = [
     # Include router URLs
@@ -161,6 +182,9 @@ urlpatterns = [
     
     # School Staff APIs
     path('mobile/school/deliveries/<int:shipment_id>/receive/', school_receive_delivery, name='school-receive-delivery'),
+    
+    # Province Staff APIs
+    path('mobile/province/shipments/<int:shipment_id>/receive/', province_receive_shipment, name='province-receive-shipment'),
     
     # ===== Province Shipment Creation from School Requests =====
     path('province/school-requests/approved/', get_approved_school_requests, name='approved-school-requests'),

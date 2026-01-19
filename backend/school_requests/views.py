@@ -25,6 +25,12 @@ class SchoolRequestViewSet(viewsets.ModelViewSet):
             # موظف المدرسة يرى طلبات مدرسته فقط
             # هنا تحتاج إضافة حقل school للمستخدم إذا كان موظف مدرسة
             pass
+        
+        # Filter out requests that already have shipments if exclude_shipped=true
+        exclude_shipped = self.request.query_params.get('exclude_shipped', '').lower() == 'true'
+        if exclude_shipped:
+            # Exclude requests that have related province shipments
+            queryset = queryset.filter(province_shipments__isnull=True)
             
         # فلترة حسب المدرسة
         school_id = self.request.query_params.get('school_id')

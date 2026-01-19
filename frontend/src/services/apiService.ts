@@ -208,8 +208,9 @@ class ApiService {
     }
   }
 
-  async getShipment(id: number): Promise<Shipment> {
-    const response = await api.get(`/warehouses/shipments/${id}/`);
+  async getShipment(id: number, shipmentType?: string): Promise<Shipment> {
+    const params = shipmentType ? { type: shipmentType } : {};
+    const response = await api.get(`/warehouses/shipments/${id}/`, { params });
     return response.data;
   }
 

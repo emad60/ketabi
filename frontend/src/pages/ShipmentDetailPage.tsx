@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { ShipmentDetailsDialog } from '../components/ShipmentDetailsDialog';
 import apiService from '../services/apiService';
 
 export default function ShipmentDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [shipment, setShipment] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
@@ -15,7 +16,9 @@ export default function ShipmentDetailPage() {
       try {
         setLoading(true);
         if (!id) return setError('Invalid shipment id');
-        const data = await apiService.getShipment(parseInt(id, 10));
+        // Get shipment type from URL query params if present
+        const shipmentType = searchParams.get('type');
+        const data = await apiService.getShipment(parseInt(id, 10), shipmentType || undefined);
         setShipment(data);
       } catch (err: any) {
         console.error('Error fetching shipment:', err);
@@ -25,7 +28,7 @@ export default function ShipmentDetailPage() {
       }
     };
     fetchShipment();
-  }, [id]);
+  }, [id, searchParams]);
 
   if (loading) {
     return (

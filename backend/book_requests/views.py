@@ -26,8 +26,11 @@ class ProvinceBookRequestViewSet(viewsets.ModelViewSet):
             'created_by', 'reviewed_by'
         ).prefetch_related('items__book').order_by('-created_at')
         
-        # Note: exclude_shipped filter removed since relationship doesn't exist
-        # If needed in future, add related_name to MinistryToProvinceShipment.request field
+        # Filter out requests that already have shipments if exclude_shipped=true
+        exclude_shipped = self.request.query_params.get('exclude_shipped', '').lower() == 'true'
+        if exclude_shipped:
+            # Exclude requests that have related ministry shipments
+            base_qs = base_qs.filter(ministry_shipments__isnull=True)
         
         # Admin can see everything
         if user.role == 'admin':

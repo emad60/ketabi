@@ -1,0 +1,2 @@
+# Just run:
+cat ketabi_final_backup_20260119_172806.sql | docker compose exec -T db psql -U $POSTGRES_USER $POSTGRES_DB
